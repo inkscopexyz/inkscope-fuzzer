@@ -13,12 +13,45 @@ fn main() {
     type CodeType = Vec<u8>;
     type AllowDeprecatedInterface = bool;
     type AllowUnstableInterface = bool;
+    /// Output of a contract call or instantiation which ran to completion.
+    //#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
+    // pub struct ExecReturnValue {
+    //     /// Flags passed along by `seal_return`. Empty when `seal_return` was never called.
+    //     pub flags: ReturnFlags,
+    //     /// Buffer passed along by `seal_return`. Empty when `seal_return` was never called.
+    //     pub data: Vec<u8>,
+    // }
 
+    // impl ExecReturnValue {
+    //     /// The contract did revert all storage changes.
+    //     pub fn did_revert(&self) -> bool {
+    //         self.flags.contains(ReturnFlags::REVERT)
+    //     }
+    // }
+    // pub type ExecResult = Result<ExecReturnValue, ExecError>;
+    /// Can only be used for one call.
+    pub struct ContractHostState<'a, E: Ext + 'a> {
+        ext: &'a mut E,
+        input_data: Option<Vec<u8>>,
+        memory: Option<Memory>,
+    }
+
+    impl<'a, E: Ext + 'a> ContractHostState<'a, E> {
+        pub fn new(ext: &'a mut E, input_data: Vec<u8>) -> Self {
+            ContractHostState {
+                ext,
+                input_data: Some(input_data),
+                memory: None,
+            }
+        }
+    }
     /// Imported memory must be located inside this module. The reason for hardcoding is that current
     /// compiler toolchains might not support specifying other modules than "env" for memory imports.
     pub const IMPORT_MODULE_MEMORY: &str = "env";
 
     const BYTES_PER_PAGE: usize = 64 * 1024;
+
+    const INSTRUCTION_WEIGHTS_BASE: u64 = 1; //TODO: CHECK THIS VALUE
 
     pub enum Determinism {
         /// The execution should be deterministic and hence no indeterministic instructions are
@@ -268,6 +301,13 @@ fn main() {
         })
     }
 
+    pub enum ExportedFunction {
+        /// The constructor function which is executed on deployment of a contract.
+        Constructor,
+        /// The function which is executed when a contract is called.
+        Call,
+    }
+
     impl WasmBlob {
         // Create the module by checking the `code`.
         pub fn from_code(
@@ -333,6 +373,84 @@ fn main() {
 
             Ok((store, memory, instance))
         }
+
+        //fn execute<E: Ext<T = T>>(
+        fn execute(
+            self,
+            //ext: &mut E,
+            function: &ExportedFunction,
+            input_data: Vec<u8>,
+        ) -> ExecResult {
+            let code = self.code.as_slice();
+            // Instantiate the Wasm module to the engine.
+            let runtime = Runtime::new(ext, input_data);
+            let schedule = <T>::Schedule::get();
+            let (mut store, memory, instance) = Self::instantiate(
+                code,
+                runtime,
+                &schedule,
+                self.code_info.determinism,
+                StackLimits::default(),
+                match function {
+                    ExportedFunction::Call => true,
+                    ExportedFunction::Constructor => false,
+                },
+            )
+            .map_err(|msg| {
+                //log::debug!(target: LOG_TARGET, "failed to instantiate code to wasmi: {}", msg);
+                ()
+            })?;
+            store.data_mut().set_memory(memory);
+
+            // Set fuel limit for the wasmi execution.
+            // We normalize it by the base instruction weight, as its cost in wasmi engine is `1`.
+            let fuel_limit = store
+                .data_mut()
+                .ext()
+                .gas_meter_mut()
+                .gas_left()
+                .ref_time()
+                .checked_div(INSTRUCTION_WEIGHTS_BASE)
+                .ok_or(())?;
+            store
+                .add_fuel(fuel_limit)
+                .expect("We've set up engine to fuel consuming mode; qed");
+
+            // Sync this frame's gas meter with the engine's one.
+            let process_result = |mut store: Store<Runtime<E>>, result| {
+                let engine_consumed_total = store
+                    .fuel_consumed()
+                    .expect("Fuel metering is enabled; qed");
+                let gas_meter = store.data_mut().ext().gas_meter_mut();
+                gas_meter.charge_fuel(engine_consumed_total)?;
+                store.into_data().to_execution_result(result)
+            };
+
+            // Start function should already see the correct refcount in case it will be ever inspected.
+            if let &ExportedFunction::Constructor = function {
+                E::increment_refcount(self.code_hash)?;
+            }
+
+            // Any abort in start function (includes `return` + `terminate`) will make us skip the
+            // call into the subsequent exported function. This means that calling `return` returns data
+            // from the whole contract execution.
+            match instance.start(&mut store) {
+                Ok(instance) => {
+                    let exported_func = instance
+                        .get_export(&store, function.identifier())
+                        .and_then(|export| export.into_func())
+                        .ok_or_else(|| {
+                            //log::error!(target: LOG_TARGET, "failed to find entry point");
+                            //Error::<T>::CodeRejected
+                            ()
+                        })?;
+
+                    let result = exported_func.call(&mut store, &[], &mut []);
+                    process_result(store, result)
+                }
+                Err(err) => process_result(store, Err(err)),
+            }
+        }
     }
 }
 
@@ -357,56 +475,3 @@ pub mod wasm_test {
     //         WasmBlob::<Test>::from_code_unchecked(wasm, Default::default(), Default::default());
     // }
 }
-
-// #[cfg(test)]
-// pub mod wasm_test {
-//     use pallet_contracts::wasm::tests::*;
-//     #[test]
-//     fn testing() {
-//         const CODE_TRANSFER: &str = r#"
-//     (module
-//     	;; seal_transfer(
-//     	;;    account_ptr: u32,
-//     	;;    account_len: u32,
-//     	;;    value_ptr: u32,
-//     	;;    value_len: u32,
-//     	;;) -> u32
-//     	(import "seal0" "seal_transfer" (func $seal_transfer (param i32 i32 i32 i32) (result i32)))
-//     	(import "env" "memory" (memory 1 1))
-//     	(func (export "call")
-//     		(drop
-//     			(call $seal_transfer
-//     				(i32.const 4)  ;; Pointer to "account" address.
-//     				(i32.const 32)  ;; Length of "account" address.
-//     				(i32.const 36) ;; Pointer to the buffer with value to transfer
-//     				(i32.const 8)  ;; Length of the buffer with value to transfer.
-//     			)
-//     		)
-//     	)
-//     	(func (export "deploy"))
-
-//     	;; Destination AccountId (ALICE)
-//     	(data (i32.const 4)
-//     		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
-//     		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
-//     	)
-
-//     	;; Amount of value to transfer.
-//     	;; Represented by u64 (8 bytes long) in little endian.
-//     	(data (i32.const 36) "\99\00\00\00\00\00\00\00")
-//     )
-//     "#;
-
-//         let mut mock_ext = MockExt::default();
-//         execute(CODE_TRANSFER, vec![], &mut mock_ext);
-//         //assert_ok!(execute(CODE_TRANSFER, vec![], &mut mock_ext));
-
-//         // assert_eq!(
-//         //     &mock_ext.transfers,
-//         //     &[TransferEntry {
-//         //         to: ALICE,
-//         //         value: 153
-//         //     }]
-//         // );
-//     }
-// }
