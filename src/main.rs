@@ -5,14 +5,112 @@ use wasmi::{
 };
 use wasmi::{InstancePre, Linker, Memory, MemoryType, Store};
 
-fn main() {
-    println!("Hello, world!");
+
+/* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
+rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for 
+different parachains.
+
+Whe should have our "T-like" Config that defines all these parameters and types. The Fuzzer will then depend? on that like so: Fuzzer<C: Config>
+We will have different configs resembling different real parachains environments.
+
+Config{
     type AccountId = [u8; 32];
     type Hash = [u8; 32];
     type Balance = u128;
     type CodeType = Vec<u8>;
     type AllowDeprecatedInterface = bool;
     type AllowUnstableInterface = bool;
+    type Determinism = bool;  // If true the execution should be deterministic and hence no indeterministic instructions are allowed.
+    type Schedule = Schedule;
+    type MaxCodeSize = MaxCodeSize;
+    type MaxMemoryPages = MaxMemoryPages;
+    type MaxTotalLength = MaxTotalLength;
+    type MaxSubjectLen = MaxSubjectLen;
+    type MaxCodeSize = MaxCodeSize;
+    type MaxGas = MaxGas;
+    type MaxValueSize = MaxValueSize;
+    type MaxStackHeight = MaxStackHeight;
+    type MaxDepth = MaxDepth;
+    type MaxTopics = MaxTopics;
+    type MaxEventSize = MaxEventSize;
+    type MaxReads = MaxReads;
+    type MaxWrites = MaxWrites;
+    type WeightPrice = WeightPrice;
+    type WeightPrice = WeightPrice;
+}
+
+Example types that may vary between parachains: AccountId, Hash, Balance, MaxSizeOfCode, ...
+Hash algorithm (for example to calculate the codehash) may vary.
+
+WorldState
+Then I magine we should have a world state containing a snapshot of all the emulated world state. Worldstate can have functions to modify it. Give balance, 
+set accounts, etc.
+Should it be an overlay over actual blockchain? 
+Accessing an account that does not exist? 
+Should we download it from a block? 
+Should we return an error?
+
+An account should have a balance, storage, codehash, etc.
+type Storage = HashMap<vec<u8>, vec<u8>>;
+Account{
+    balance: Balance,
+    storage: Storage,
+    ..
+}
+
+The world state contains a snapshot of all the accounts, code, etc. It should have functions to modify it. Give balance, etc.
+WorldState {
+    accounts: HashMap<AccountId, Account>,
+    code: HashMap<Hash, Code>,
+    ...
+}
+
+
+The emulated execution starts with a call() or a deploy(). The wasm engine stuff must be pregenerated and stored in the world state.
+A seed will suffice prandomly generate all the inputs needed for a run. 
+
+CallFrame{
+    module: Module,
+    instance: Instance,
+    memory: Memory,
+    input: vec<u8>,    
+}
+
+Trace{
+    world_state: WorldState,    
+    call_stack: Vec<CallFrame>,
+}
+
+
+There should be a host functions trait somewhere that implements all the methods that could be called from the wasm code.
+The result from input() will depend on the seed and on some static information gathered from the current contract (constants or the abi)
+
+...
+
+Now we need to rewrite that doc in a more INK/Substrate way. 
+
+*/
+
+
+
+// These are the types and constants that are used by the specific runtime where pallet contract is implemented
+// Although unlikely, different parachains may be configured with different types and constants
+type AccountId = [u8; 32];
+type Hash = [u8; 32];
+type Balance = u128;
+type CodeType = Vec<u8>;
+type AllowDeprecatedInterface = bool;
+type AllowUnstableInterface = bool;
+type Determinism = bool;  // If true the execution should be deterministic and hence no indeterministic instructions are allowed.
+
+/// This is the hashing algorithm used by the specific runtime
+fn hash(data: &[u8]) -> Hash {
+    [0; 32]
+}
+
+fn main() {
+    println!("Hello, world!");
+
     /// Output of a contract call or instantiation which ran to completion.
     //#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
     // pub struct ExecReturnValue {
@@ -48,27 +146,10 @@ fn main() {
     /// Imported memory must be located inside this module. The reason for hardcoding is that current
     /// compiler toolchains might not support specifying other modules than "env" for memory imports.
     pub const IMPORT_MODULE_MEMORY: &str = "env";
-
     const BYTES_PER_PAGE: usize = 64 * 1024;
-
     const INSTRUCTION_WEIGHTS_BASE: u64 = 1; //TODO: CHECK THIS VALUE
 
-    pub enum Determinism {
-        /// The execution should be deterministic and hence no indeterministic instructions are
-        /// allowed.
-        ///
-        /// Dispatchables always use this mode in order to make on-chain execution deterministic.
-        Enforced,
-        /// Allow calling or uploading an indeterministic code.
-        ///
-        /// This is only possible when calling into `pallet-contracts` directly via
-        /// [`crate::Pallet::bare_call`].
-        ///
-        /// # Note
-        ///
-        /// **Never** use this mode for on-chain execution.
-        Relaxed,
-    }
+
     pub struct LoadedModule {
         pub module: Module,
         pub engine: Engine,
@@ -96,7 +177,7 @@ fn main() {
                 .wasm_tail_call(false)
                 .wasm_extended_const(false)
                 .wasm_saturating_float_to_int(false)
-                .floats(matches!(determinism, Determinism::Relaxed))
+                .floats(!determinism)
                 .consume_fuel(true)
                 .fuel_consumption_mode(FuelConsumptionMode::Eager);
 
@@ -267,39 +348,6 @@ fn main() {
         code_hash: Hash, //<T as frame_system::Config>::Hash;,
     }
 
-    pub fn prepare(
-        code: CodeType,
-        memory_limit: u32,
-        owner: AccountId,
-        determinism: Determinism,
-    ) -> Result<WasmBlob, ()> {
-        //validate::<E, T>(code.as_ref(), schedule, determinism)?; TODO: Check import and exports
-
-        // Calculate deposit for storing contract code and `code_info` in two different storage items.
-        let code_len = code.len() as u32;
-        //let bytes_added = code_len.saturating_add(<CodeInfo<T>>::max_encoded_len() as u32);
-        // let deposit = Diff {
-        //     bytes_added,
-        //     items_added: 2,
-        //     ..Default::default()
-        // }
-        // .update_contract::<T>(None)
-        // .charge_or_zero();
-        let code_info = CodeInfo {
-            owner,
-            deposit: 0,
-            determinism,
-            refcount: 0,
-            code_len,
-        };
-        //let code_hash = T::Hashing::hash(&code); //TODO: Implement hashing algorithm
-        let code_hash = [0; 32];
-        Ok(WasmBlob {
-            code,
-            code_info,
-            code_hash,
-        })
-    }
 
     pub enum ExportedFunction {
         /// The constructor function which is executed on deployment of a contract.
@@ -311,12 +359,39 @@ fn main() {
     impl WasmBlob {
         // Create the module by checking the `code`.
         pub fn from_code(
-            code: Vec<u8>,
+            code: CodeType,
             memory_limit: u32,
             owner: AccountId,
             determinism: Determinism,
         ) -> Result<Self, ()> {
-            prepare(code.try_into().map_err(|_| ())?, 10, owner, determinism)
+            //validate::<E, T>(code.as_ref(), schedule, determinism)?; TODO: Check import and exports
+            // Calculate deposit for storing contract code and `code_info` in two different storage items.
+
+            let code_len = code.len() as u32;
+            //let bytes_added = code_len.saturating_add(<CodeInfo<T>>::max_encoded_len() as u32);
+            // let deposit = Diff {
+            //     bytes_added,
+            //     items_added: 2,
+            //     ..Default::default()
+            // }
+            // .update_contract::<T>(None)
+            // .charge_or_zero();
+            let code_info = CodeInfo {
+                owner,
+                deposit: 0,
+                determinism,
+                refcount: 0,
+                code_len,
+            };
+            //let code_hash = T::Hashing::hash(&code); //TODO: Implement hashing algorithm
+            let code_hash = [0; 32];
+            Ok(WasmBlob {
+                code,
+                code_info,
+                code_hash,
+            })
+
+
         }
 
         /// Creates and returns an instance of the supplied code.
