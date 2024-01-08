@@ -63,25 +63,25 @@ pub trait Ext {
     ///
     /// Returns `None` if the `key` wasn't previously set by `set_storage` or
     /// was deleted.
-    fn get_storage(&mut self, key: &Key<Self::T>) -> Option<Vec<u8>>;
+    fn get_storage(&mut self, key: &Key) -> Option<Vec<u8>>;
 
     /// Returns `Some(len)` (in bytes) if a storage item exists at `key`.
     ///
     /// Returns `None` if the `key` wasn't previously set by `set_storage` or
     /// was deleted.
-    fn get_storage_size(&mut self, key: &Key<Self::T>) -> Option<u32>;
+    fn get_storage_size(&mut self, key: &Key) -> Option<u32>;
 
     /// Sets the storage entry by the given key to the specified value. If `value` is `None` then
     /// the storage entry is deleted.
     fn set_storage(
         &mut self,
-        key: &Key<Self::T>,
+        key: &Key,
         value: Option<Vec<u8>>,
         take_old: bool,
     ) -> Result<WriteOutcome, DispatchError>;
 
     /// Returns the caller.
-    fn caller(&self) -> Origin<Self::T>;
+    fn caller(&self) -> Origin;
 
     /// Check if a contract lives at the specified `address`.
     fn is_contract(&self, address: &AccountId) -> bool;
@@ -115,21 +115,21 @@ pub trait Ext {
     fn value_transferred(&self) -> Balance;
 
     /// Returns a reference to the timestamp of the current block
-    fn now(&self) -> &MomentOf<Self::T>;
+    fn now(&self) -> &MomentOf;
 
     /// Returns the minimum balance that is required for creating an account.
     fn minimum_balance(&self) -> Balance;
 
     /// Returns a random number for the current block with the given subject.
-    fn random(&self, subject: &[u8]) -> (SeedOf<Self::T>, BlockNumberFor<Self::T>);
+    fn random(&self, subject: &[u8]) -> (SeedOf, BlockNumberFor);
 
     /// Deposit an event with the given topics.
     ///
     /// There should not be any duplicates in `topics`.
-    fn deposit_event(&mut self, topics: Vec<TopicOf<Self::T>>, data: Vec<u8>);
+    fn deposit_event(&mut self, topics: Vec<TopicOf>, data: Vec<u8>);
 
     /// Returns the current block number.
-    fn block_number(&self) -> BlockNumberFor<Self::T>;
+    fn block_number(&self) -> BlockNumberFor;
 
     /// Returns the maximum allowed size of a storage item.
     fn max_value_size(&self) -> u32;
@@ -160,7 +160,7 @@ pub trait Ext {
     fn append_debug_buffer(&mut self, msg: &str) -> bool;
 
     /// Call some dispatchable and return the result.
-    fn call_runtime(&self, call: <Self::T as Config>::RuntimeCall) -> DispatchResultWithPostInfo;
+    //fn call_runtime(&self, call: <Self::T as Config>::RuntimeCall) -> DispatchResultWithPostInfo; //TODO: Check if this can be removed
 
     /// Recovers ECDSA compressed public key based on signature and message hash.
     fn ecdsa_recover(&self, signature: &[u8; 65], message_hash: &[u8; 32]) -> Result<[u8; 33], ()>;
@@ -172,8 +172,8 @@ pub trait Ext {
     fn ecdsa_to_eth_address(&self, pk: &[u8; 33]) -> Result<[u8; 20], ()>;
 
     /// Tests sometimes need to modify and inspect the contract info directly.
-    #[cfg(test)]
-    fn contract_info(&mut self) -> &mut ContractInfo<Self::T>;
+    // #[cfg(test)]
+    // fn contract_info(&mut self) -> &mut ContractInfo<Self::T>;//TODO: Check if this can be removed
 
     /// Sets new code hash for existing contract.
     fn set_code_hash(&mut self, hash: Hash) -> Result<(), DispatchError>;

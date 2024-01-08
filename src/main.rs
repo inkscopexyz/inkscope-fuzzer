@@ -1,5 +1,7 @@
 mod ext;
+mod flags;
 mod types;
+use ext::Ext;
 use types::*;
 use wasmi::{
     core::ValueType as WasmiValueType, Config as WasmiConfig, Engine, ExternType,
@@ -434,10 +436,10 @@ fn main() {
             Ok((store, memory, instance))
         }
 
-        //fn execute<E: Ext<T = T>>(
-        fn execute(
+        fn execute<E: Ext>(
+            //fn execute(
             self,
-            //ext: &mut E,
+            ext: &mut E,
             function: &ExportedFunction,
             input_data: Vec<u8>,
         ) -> ExecResult {
