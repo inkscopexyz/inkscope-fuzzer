@@ -1,4 +1,6 @@
+mod ext_env;
 mod flipper;
+use ext_env::*;
 use flipper::FLIPPER_WAT;
 use wasmi::*;
 
@@ -87,70 +89,6 @@ Now we need to rewrite that doc in a more INK/Substrate way.
 
 */
 
-pub struct TestHostState {
-    data: u32,
-}
-// impl TestHostState {
-//     pub fn new(memory: Vec<u8>, input: Vec<u8>, caller: AccountId) -> Self {
-//         TestHostState {
-//             memory,
-//             input,
-//             caller,
-//         }
-//     }
-
-//     pub fn host_caller(mut context: Caller<'_, TestHostState>, pointer: u32, len: u32) {
-//         let mut context = context.data_mut();
-//         let slice = context.memory.as_mut_slice();
-//         slice[pointer as usize..(pointer + len) as usize].copy_from_slice(&context.caller);
-//     }
-// }
-/// This is the hashing algorithm used by the specific runtime
-
-pub struct LoadedModule {
-    pub module: Module,
-    pub engine: Engine,
-}
-
-impl LoadedModule {
-    /// Creates a new instance of `LoadedModule`.
-    ///
-    /// The inner Wasm module is checked not to have restricted WebAssembly proposals.
-    /// Returns `Err` if the `code` cannot be deserialized or if it contains an invalid module.
-    pub fn new(
-        code: &[u8],
-        determinism: bool,
-        stack_limits: Option<StackLimits>,
-    ) -> Result<Self, &'static str> {
-        // NOTE: wasmi does not support unstable WebAssembly features. The module is implicitly
-        // checked for not having those ones when creating `wasmi::Module` below.
-        let mut config = Config::default();
-        config
-            .wasm_multi_value(false)
-            .wasm_mutable_global(false)
-            .wasm_sign_extension(true)
-            .wasm_bulk_memory(false)
-            .wasm_reference_types(false)
-            .wasm_tail_call(false)
-            .wasm_extended_const(false)
-            .wasm_saturating_float_to_int(false)
-            .floats(!determinism)
-            .consume_fuel(false)
-            .fuel_consumption_mode(FuelConsumptionMode::Eager);
-
-        if let Some(stack_limits) = stack_limits {
-            config.set_stack_limits(stack_limits);
-        }
-
-        let engine = Engine::new(&config);
-        let module = Module::new(&engine, code).map_err(|_| "Can't load the module into wasmi!")?;
-
-        // Return a `LoadedModule` instance with
-        // __valid__ module.
-        Ok(LoadedModule { module, engine })
-    }
-}
-
 fn main() {
     // Wasmi does not yet support parsing `.wat` so we have to convert
     // out `.wat` into `.wasm` before we compile and validate it.
@@ -159,10 +97,17 @@ fn main() {
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
-    type HostState = u32;
-
-    let mut store = Store::new(&contract.engine, 45);
+    let mut host_state =
+        HostState {
+            input_buffer: vec![],
+            caller: [0; 32],
+            value_transferred: 0,
+            memory: None,
+        };
+    let mut store = Store::new(&contract.engine, host_state);
     let mut linker = Linker::new(&contract.engine);
+    let memory = Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
+    store.data_mut().memory = Some(memory);
 
     let host_get_storage = Func::wrap(
         &mut store,
@@ -208,28 +153,53 @@ fn main() {
 
     let host_input = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, param: i32, param1: i32| {
+        |mut context: Caller<'_, HostState>, buf_ptr: i32, buf_len_ptr: i32| {
             println!("Hello from input");
-            println!("param: {}", param);
-            println!("param1: {}", param1);
+            println!("buf_ptr: {}", buf_ptr);
+            println!("buf_len_ptr: {}", buf_len_ptr);
+            //0xed4b9d1b
+            let mut memory = context.data_mut().memory.unwrap();
+            let mut read_size: [u8; 4] = [0; 4];
+
+            let size_res = memory.read(&context, buf_len_ptr as usize, &mut read_size);
+            println!("size result: {:?}", size_res);
+            println!("read size: {:?}", read_size);
+            println!("read size: {:?}", u32::from_le_bytes(read_size));
+            let wr = memory.write(&mut context, buf_ptr as usize, &[0x1b, 0x9d, 0x4b, 0xed]);
+            //[0xed, 0x4b, 0x9d, 0x1b]
+            println!("write1 result: {:?}", wr);
+            let wr = memory.write(&mut context, buf_len_ptr as usize, &[0x04, 0, 0, 0]);
+            println!("write2 result: {:?}", wr);
+            // &caller.data_mut().memory.unwrap().write(
+            //     caller,
+            //     param as usize,
+            //     &[0xed, 0x4b, 0x9d, 0x1b],
+            // );
+            let mut buffer: [u8; 32] = [0; 32];
+            let rd =
+                context
+                    .data()
+                    .memory
+                    .unwrap()
+                    .read(&mut context, buf_ptr as usize, &mut buffer);
+            println!("read result: {:?}", rd);
+            println!("memory {:?}", buffer);
         },
     );
     linker.define("seal0", "input", host_input).unwrap();
 
     let host_seal_return = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32| {
+        |caller: Caller<'_, HostState>, flags: i32, data_ptr: i32, data_len: i32| {
             println!("Hello from seal_return");
-            println!("param: {}", param);
-            println!("param1: {}", param1);
-            println!("param2: {}", param2);
+            println!("flags: {}", flags);
+            println!("data_ptr: {}", data_ptr);
+            println!("data_len: {}", data_len);
         },
     );
     linker
         .define("seal0", "seal_return", host_seal_return)
         .unwrap();
-
-    let memory = Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
 
     linker
         .define("env", "memory", memory)
