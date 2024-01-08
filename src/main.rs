@@ -1,13 +1,14 @@
-//mod environment;
+mod ext;
+mod types;
+use types::*;
 use wasmi::{
     core::ValueType as WasmiValueType, Config as WasmiConfig, Engine, ExternType,
     FuelConsumptionMode, Module, StackLimits,
 };
 use wasmi::{InstancePre, Linker, Memory, MemoryType, Store};
 
-
 /* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
-rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for 
+rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for
 different parachains.
 
 Whe should have our "T-like" Config that defines all these parameters and types. The Fuzzer will then depend? on that like so: Fuzzer<C: Config>
@@ -43,11 +44,11 @@ Example types that may vary between parachains: AccountId, Hash, Balance, MaxSiz
 Hash algorithm (for example to calculate the codehash) may vary.
 
 WorldState
-Then I magine we should have a world state containing a snapshot of all the emulated world state. Worldstate can have functions to modify it. Give balance, 
+Then I magine we should have a world state containing a snapshot of all the emulated world state. Worldstate can have functions to modify it. Give balance,
 set accounts, etc.
-Should it be an overlay over actual blockchain? 
-Accessing an account that does not exist? 
-Should we download it from a block? 
+Should it be an overlay over actual blockchain?
+Accessing an account that does not exist?
+Should we download it from a block?
 Should we return an error?
 
 An account should have a balance, storage, codehash, etc.
@@ -67,17 +68,17 @@ WorldState {
 
 
 The emulated execution starts with a call() or a deploy(). The wasm engine stuff must be pregenerated and stored in the world state.
-A seed will suffice prandomly generate all the inputs needed for a run. 
+A seed will suffice prandomly generate all the inputs needed for a run.
 
 CallFrame{
     module: Module,
     instance: Instance,
     memory: Memory,
-    input: vec<u8>,    
+    input: vec<u8>,
 }
 
 Trace{
-    world_state: WorldState,    
+    world_state: WorldState,
     call_stack: Vec<CallFrame>,
 }
 
@@ -87,21 +88,9 @@ The result from input() will depend on the seed and on some static information g
 
 ...
 
-Now we need to rewrite that doc in a more INK/Substrate way. 
+Now we need to rewrite that doc in a more INK/Substrate way.
 
 */
-
-
-
-// These are the types and constants that are used by the specific runtime where pallet contract is implemented
-// Although unlikely, different parachains may be configured with different types and constants
-type AccountId = [u8; 32];
-type Hash = [u8; 32];
-type Balance = u128;
-type CodeType = Vec<u8>;
-type AllowDeprecatedInterface = bool;
-type AllowUnstableInterface = bool;
-type Determinism = bool;  // If true the execution should be deterministic and hence no indeterministic instructions are allowed.
 
 /// This is the hashing algorithm used by the specific runtime
 fn hash(data: &[u8]) -> Hash {
@@ -148,7 +137,6 @@ fn main() {
     pub const IMPORT_MODULE_MEMORY: &str = "env";
     const BYTES_PER_PAGE: usize = 64 * 1024;
     const INSTRUCTION_WEIGHTS_BASE: u64 = 1; //TODO: CHECK THIS VALUE
-
 
     pub struct LoadedModule {
         pub module: Module,
@@ -348,7 +336,6 @@ fn main() {
         code_hash: Hash, //<T as frame_system::Config>::Hash;,
     }
 
-
     pub enum ExportedFunction {
         /// The constructor function which is executed on deployment of a contract.
         Constructor,
@@ -390,8 +377,6 @@ fn main() {
                 code_info,
                 code_hash,
             })
-
-
         }
 
         /// Creates and returns an instance of the supplied code.
@@ -527,26 +512,4 @@ fn main() {
             }
         }
     }
-}
-
-#[cfg(test)]
-pub mod wasm_test {
-    // use pallet_contracts::wasm::WasmBlob;
-    // use pallet_contracts::*;
-    // #[test]
-    // fn testing() {
-    //     let wat = r#"
-    //     (module
-    //         (import "host" "hello" (func $host_hello (param i32)))
-    //         (func (export "hello")
-    //             (call $host_hello (i32.const 3))
-    //         )
-    //     )
-    // "#;
-    //     // Wasmi does not yet support parsing `.wat` so we have to convert
-    //     // out `.wat` into `.wasm` before we compile and validate it.
-    //     let wasm = wat::parse_str(wat).unwrap();
-    //     let wasm_blob =
-    //         WasmBlob::<Test>::from_code_unchecked(wasm, Default::default(), Default::default());
-    // }
 }
