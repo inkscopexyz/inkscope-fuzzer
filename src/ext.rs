@@ -138,16 +138,16 @@ pub trait Ext {
     fn get_weight_price(&self, weight: Weight) -> Balance;
 
     /// Get a reference to the schedule used by the current call.
-    fn schedule(&self) -> &Schedule<Self::T>;
+    //fn schedule(&self) -> &Schedule<Self::T>; //TODO: Check if this can be removed
 
     /// Get an immutable reference to the nested gas meter.
-    fn gas_meter(&self) -> &GasMeter<Self::T>;
+    //fn gas_meter(&self) -> &GasMeter<Self::T>; //TODO: Check if this can be removed
 
     /// Get a mutable reference to the nested gas meter.
-    fn gas_meter_mut(&mut self) -> &mut GasMeter<Self::T>;
+    //fn gas_meter_mut(&mut self) -> &mut GasMeter<Self::T>;//TODO: Check if this can be removed
 
     /// Charges `diff` from the meter.
-    fn charge_storage(&mut self, diff: &Diff);
+    //fn charge_storage(&mut self, diff: &Diff);//TODO: Check if this can be removed
 
     /// Append a string to the debug buffer.
     ///
