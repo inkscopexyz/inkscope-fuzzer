@@ -165,7 +165,7 @@ fn main() {
             println!("size result: {:?}", size_res);
             println!("read size: {:?}", read_size);
             println!("read size: {:?}", u32::from_le_bytes(read_size));
-            let wr = memory.write(&mut context, buf_ptr as usize, &[0x1b, 0x9d, 0x4b, 0xed]);
+            let wr = memory.write(&mut context, buf_ptr as usize, &[0xed, 0x4b, 0x9d, 0x1b]);
             //[0xed, 0x4b, 0x9d, 0x1b]
             println!("write1 result: {:?}", wr);
             let wr = memory.write(&mut context, buf_len_ptr as usize, &[0x04, 0, 0, 0]);
