@@ -1,3 +1,5 @@
+mod flipper;
+use flipper::FLIPPER_WAT;
 use wasmi::*;
 
 /* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
@@ -150,17 +152,9 @@ impl LoadedModule {
 }
 
 fn main() {
-    let wat = r#"
-        (module
-            (import "host" "hello" (func $host_hello (param i32)))
-            (func (export "hello")
-                (call $host_hello (i32.const 3))
-            )
-        )
-    "#;
     // Wasmi does not yet support parsing `.wat` so we have to convert
     // out `.wat` into `.wasm` before we compile and validate it.
-    let wasm = wat::parse_str(wat).unwrap();
+    let wasm = wat::parse_str(FLIPPER_WAT).unwrap();
     //let code = vec![0];
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
@@ -170,29 +164,91 @@ fn main() {
     let mut store = Store::new(&contract.engine, 45);
     let mut linker = Linker::new(&contract.engine);
 
-    let host_hello = Func::wrap(&mut store, |caller: Caller<'_, HostState>, param: i32| {
-        println!("Got {param} from WebAssembly");
-        println!("My host state is: {}", caller.data());
-    });
-    linker.define("host", "hello", host_hello).unwrap();
+    let host_get_storage = Func::wrap(
+        &mut store,
+        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32, param3: i32| -> i32 {
+            println!("Hello from host_get_storage");
+            println!("param: {}", param);
+            println!("param1: {}", param1);
+            println!("param2: {}", param2);
+            println!("param3: {}", param3);
+            1
+        },
+    );
+    linker
+        .define("seal1", "get_storage", host_get_storage)
+        .unwrap();
 
-    let memory = Memory::new(&mut store, MemoryType::new(40, Some(1024)).expect("")).expect("");
+    let host_set_storage = Func::wrap(
+        &mut store,
+        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32, param3: i32| -> i32 {
+            println!("Hello from host_set_storage");
+            println!("param: {}", param);
+            println!("param1: {}", param1);
+            println!("param2: {}", param2);
+            println!("param3: {}", param3);
+            2
+        },
+    );
+    linker
+        .define("seal2", "set_storage", host_set_storage)
+        .unwrap();
+
+    let host_value_transferred = Func::wrap(
+        &mut store,
+        |caller: Caller<'_, HostState>, param: i32, param1: i32| {
+            println!("Hello from transferred");
+            println!("param: {}", param);
+            println!("param1: {}", param1);
+        },
+    );
+    linker
+        .define("seal0", "value_transferred", host_value_transferred)
+        .unwrap();
+
+    let host_input = Func::wrap(
+        &mut store,
+        |caller: Caller<'_, HostState>, param: i32, param1: i32| {
+            println!("Hello from input");
+            println!("param: {}", param);
+            println!("param1: {}", param1);
+        },
+    );
+    linker.define("seal0", "input", host_input).unwrap();
+
+    let host_seal_return = Func::wrap(
+        &mut store,
+        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32| {
+            println!("Hello from seal_return");
+            println!("param: {}", param);
+            println!("param1: {}", param1);
+            println!("param2: {}", param2);
+        },
+    );
+    linker
+        .define("seal0", "seal_return", host_seal_return)
+        .unwrap();
+
+    let memory = Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
 
     linker
         .define("env", "memory", memory)
         .expect("We just created the Linker. It has no definitions with this name; qed");
 
-    let instance = linker
-        .instantiate(&mut store, &contract.module)
-        .map_err(|_| "can't instantiate module with provided definitions")
-        .unwrap();
-
+    let res_instance: Result<InstancePre, Error> = linker.instantiate(&mut store, &contract.module);
+    match &res_instance {
+        Ok(instance) => {
+            println!("Instance created!");
+        }
+        Err(e) => println!("Error: {}", e),
+    };
+    let instance = res_instance.unwrap();
     let started_instance = instance.start(&mut store);
-    let hello = started_instance
+    let deploy = started_instance
         .unwrap()
-        .get_typed_func::<(), ()>(&store, "hello")
+        .get_typed_func::<(), ()>(&store, "deploy")
         .unwrap();
 
     // And finally we can call the wasm!
-    hello.call(&mut store, ()).unwrap();
+    deploy.call(&mut store, ()).unwrap();
 }
