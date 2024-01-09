@@ -1,4 +1,8 @@
 use wasmi::*;
+use parity_scale_codec::{Decode, MaxEncodedLen, DecodeLimit};
+use wasmi::core::Trap;
+
+
 pub struct LoadedModule {
     pub module: Module,
     pub engine: Engine,
@@ -49,4 +53,37 @@ pub struct HostState {
     pub caller: [u8; 32],
     pub value_transferred: u128,
     pub memory: Option<Memory>,
+}
+/// The maximum nesting depth a contract can use when encoding types.
+const MAX_DECODE_NESTING: u32 = 256;
+
+impl HostState{
+
+    /// Reads and decodes a type with a size fixed at compile time from contract memory.
+    pub fn decode_from_memory_as<D: Decode + MaxEncodedLen + std::fmt::Debug>(
+        &self,
+        memory: &mut [u8],
+        ptr: u32,
+    ) -> Result<D, Error> {
+        let ptr = ptr as usize;
+        let mut bound_checked = memory
+            .get(ptr..ptr + D::max_encoded_len() as usize)
+            .ok_or_else(|| wasmi::Error::Memory(errors::MemoryError::OutOfBoundsAccess));
+
+        println!("bound_checked: {:?}", bound_checked);
+
+        let mut bound_checked =     bound_checked ?;
+
+        let decoded = D::decode_with_depth_limit(MAX_DECODE_NESTING, &mut bound_checked)
+            .map_err(|_| wasmi::Error::Trap(Trap::new(format!("Error decoding at {}", ptr))));
+        println!("decoded: {:?}", decoded);
+        let decoded = decoded?;
+        Ok(decoded)
+    }
+
+    // pub fn write_to_memory(&self, buffer: &[u8], ptr: u32) -> Result<(), wasmi::Error>{
+    //     let memory = self.memory.ok_or(Trap::new("No memory"))?.data_mut(&mut ctx);
+    // }
+ 
+
 }

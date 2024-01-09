@@ -6,5 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+parity-scale-codec = { version = "3.6.9", features = ["max-encoded-len"] }
 wasmi = "0.31.1"
 wat = "1.0.82"

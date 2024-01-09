@@ -3,6 +3,7 @@ mod flipper;
 use ext_env::*;
 use flipper::FLIPPER_WAT;
 use wasmi::*;
+use wasmi::core::Trap;
 
 /* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
 rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for
@@ -89,6 +90,59 @@ Now we need to rewrite that doc in a more INK/Substrate way.
 
 */
 
+
+
+
+
+
+/// Stores the input passed by the caller into the supplied buffer.
+///
+/// The value is stored to linear memory at the address pointed to by `out_ptr`.
+/// `out_len_ptr` must point to a u32 value that describes the available space at
+/// `out_ptr`. This call overwrites it with the size of the value. If the available
+/// space at `out_ptr` is less than the size of the value a trap is triggered.
+///
+
+
+fn host_input_fn(mut ctx: Caller<'_, HostState>, buf_ptr: i32, buf_len_ptr: u32) -> Result<(), Trap> {
+    //TODO: this needs to be a true logging facility
+    println!("HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})", buf_ptr, buf_len_ptr);
+=
+    // // TODO move this to a function if possible-> let memory = get_mem(ctx);
+    let state = ctx.data_mut();
+    let memory = state.memory.ok_or(Trap::new("No memory"))?;
+    let memory = memory.data_mut(ctx.as_context_mut());
+
+
+    // let buf_len = state.decode_from_memory_as::<u32>(memory, buf_len_ptr as u32);
+    // //println!("HOSTFN:: read buf_len: {}", buf_len);
+
+
+Ok(())
+    //0xed4b9d1b
+    // let wr = memory.write(&mut context, buf_ptr as usize, &[0xed, 0x4b, 0x9d, 0x1b]);
+    // //[0xed, 0x4b, 0x9d, 0x1b]
+    // println!("write1 result: {:?}", wr);
+    // let wr = memory.write(&mut context, buf_len_ptr as usize, &[0x04, 0, 0, 0]);
+    // println!("write2 result: {:?}", wr);
+    // // &caller.data_mut().memory.unwrap().write(
+    // //     caller,
+    // //     param as usize,
+    // //     &[0xed, 0x4b, 0x9d, 0x1b],
+    // // );
+    // let mut buffer: [u8; 32] = [0; 32];
+    // let rd =
+    //     context
+    //         .data()
+    //         .memory
+    //         .unwrap()
+    //         .read(&mut context, buf_ptr as usize, &mut buffer);
+    // println!("read result: {:?}", rd);
+    // println!("memory {:?}", buffer);
+
+}
+
+
 fn main() {
     // Wasmi does not yet support parsing `.wat` so we have to convert
     // out `.wat` into `.wasm` before we compile and validate it.
@@ -152,40 +206,8 @@ fn main() {
         .unwrap();
 
     let host_input = Func::wrap(
-        &mut store,
-        |mut context: Caller<'_, HostState>, buf_ptr: i32, buf_len_ptr: i32| {
-            println!("Hello from input");
-            println!("buf_ptr: {}", buf_ptr);
-            println!("buf_len_ptr: {}", buf_len_ptr);
-            //0xed4b9d1b
-            let mut memory = context.data_mut().memory.unwrap();
-            let mut read_size: [u8; 4] = [0; 4];
+        &mut store, host_input_fn);
 
-            let size_res = memory.read(&context, buf_len_ptr as usize, &mut read_size);
-            println!("size result: {:?}", size_res);
-            println!("read size: {:?}", read_size);
-            println!("read size: {:?}", u32::from_le_bytes(read_size));
-            let wr = memory.write(&mut context, buf_ptr as usize, &[0xed, 0x4b, 0x9d, 0x1b]);
-            //[0xed, 0x4b, 0x9d, 0x1b]
-            println!("write1 result: {:?}", wr);
-            let wr = memory.write(&mut context, buf_len_ptr as usize, &[0x04, 0, 0, 0]);
-            println!("write2 result: {:?}", wr);
-            // &caller.data_mut().memory.unwrap().write(
-            //     caller,
-            //     param as usize,
-            //     &[0xed, 0x4b, 0x9d, 0x1b],
-            // );
-            let mut buffer: [u8; 32] = [0; 32];
-            let rd =
-                context
-                    .data()
-                    .memory
-                    .unwrap()
-                    .read(&mut context, buf_ptr as usize, &mut buffer);
-            println!("read result: {:?}", rd);
-            println!("memory {:?}", buffer);
-        },
-    );
     linker.define("seal0", "input", host_input).unwrap();
 
     let host_seal_return = Func::wrap(
