@@ -54,6 +54,7 @@ pub struct HostState {
     pub caller: [u8; 32],
     pub value_transferred: u128,
     pub memory: Option<Memory>,
+    pub return_data: Option<Vec<u8>>,
 }
 /// The maximum nesting depth a contract can use when encoding types.
 const MAX_DECODE_NESTING: u32 = 256;
@@ -84,8 +85,28 @@ impl HostState{
         ptr: u32,
         value: E,
     ) -> Result<(), Trap> {
-        self.write_to_memory(memory, ptr, &value.encode())
+        let buffer = value.encode();
+        self.write_to_memory(memory, ptr, &buffer)
     }
+
+
+    pub fn encode_to_memory_bounded<E: Encode + MaxEncodedLen + std::fmt::Debug>(   &self,
+        memory: &mut [u8],
+        ptr: u32,
+        ptr_len: u32,
+        value: E,
+    ) -> Result<(), Trap> {
+        let len =self.decode_from_memory::<u32>(memory, ptr_len)?;
+        let buffer = value.encode();
+        let buffer_len = buffer.len();
+        if buffer_len > len as usize {
+            return Err(Trap::new(format!("Buffer too large to encode at {} with size {}", ptr, len)));
+        }
+        self.write_to_memory(memory, ptr, &buffer)?;
+        self.write_to_memory(memory, ptr_len, 
+            &(buffer_len as u32).encode())
+    }
+
 
     /// Write the given buffer to the designated location in the memory.
 	pub fn write_to_memory(
@@ -135,6 +156,9 @@ impl HostState{
 
         Ok(0)
     }
-
+    
+    pub fn set_return_data(&mut self, return_data: &[u8]){
+        self.return_data = Some(return_data.into());
+    }
 
 }

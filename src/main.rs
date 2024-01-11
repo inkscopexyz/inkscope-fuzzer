@@ -110,9 +110,8 @@ fn host_input_fn(mut ctx: Caller<'_, HostState>, buf_ptr: u32, buf_len_ptr: u32)
     //TODO: this needs to be a true logging facility
     println!("HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})", buf_ptr, buf_len_ptr);
     let (memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
-
-    let buf_len = state.decode_from_memory::<u32>(memory, buf_len_ptr).unwrap();
-    println!("HOSTFN:: read buf_len: {}", buf_len);
+    
+    state.decode_from_memory::<u32>(memory, buf_len_ptr)?;
 
     // TODO generate approiate inpud using host state and seed and abi and whatever
     let input = state.get_input();
@@ -153,6 +152,54 @@ fn host_set_storage(
     state.set_storage(memory, key_ptr, key_len, value_ptr, value_len)
 }
 
+/// Cease contract execution and save a data buffer as a result of the execution.
+///
+/// This function never returns as it stops execution of the caller.
+/// This is the only way to return a data buffer to the caller. Returning from
+/// execution without calling this function is equivalent to calling:
+/// ```nocompile
+/// seal_return(0, 0, 0);
+/// ```
+///
+/// The flags argument is a bitfield that can be used to signal special return
+/// conditions to the supervisor:
+/// --- lsb ---
+/// bit 0      : REVERT - Revert all storage changes made by the caller.
+/// bit [1, 31]: Reserved for future use.
+/// --- msb ---
+///
+/// Using a reserved bit triggers a trap.
+fn host_seal_return(
+    mut ctx: Caller<'_, HostState>, 
+    flags: i32,
+    data_ptr: u32,
+    data_len: u32,
+) -> Result<(), Trap> {
+    println!("HOSTFN:: seal_return(flags: 0x{:x}, data_ptr: 0x{:x}, data_len: 0x{:x})", flags, data_ptr, data_len);
+    let (memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
+    let return_data = state.read_from_memory(memory, data_ptr, data_len)?;
+    state.set_return_data(return_data);
+    Err(Trap::i32_exit(flags))
+}
+
+	/// Stores the value transferred along with this call/instantiate into the supplied buffer.
+	///
+	/// The value is stored to linear memory at the address pointed to by `out_ptr`.
+	/// `out_len_ptr` must point to a `u32` value that describes the available space at
+	/// `out_ptr`. This call overwrites it with the size of the value. If the available
+	/// space at `out_ptr` is less than the size of the value a trap is triggered.
+	///
+	/// The data is encoded as `T::Balance`.
+	fn value_transferred(
+		mut ctx: Caller<'_, HostState>, 
+		out_ptr: u32,
+		out_len_ptr: u32,
+	) -> Result<(), Trap> {
+        println!("HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})", out_ptr, out_len_ptr);
+        let (mut memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
+
+        state.encode_to_memory_bounded(memory, out_ptr, out_len_ptr, state.value_transferred)
+	}
 
 fn main() {
     // Wasmi does not yet support parsing `.wat` so we have to convert
@@ -169,6 +216,7 @@ fn main() {
             caller: [0; 32],
             value_transferred: 0,
             memory: None,
+            return_data: None,
         };
     let mut store = Store::new(&contract.engine, host_state);
     let mut linker = Linker::new(&contract.engine);
@@ -200,11 +248,7 @@ fn main() {
 
     let host_value_transferred = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, param: i32, param1: i32| {
-            println!("Hello from transferred");
-            println!("param: {}", param);
-            println!("param1: {}", param1);
-        },
+        value_transferred,
     );
     linker
         .define("seal0", "value_transferred", host_value_transferred)
@@ -217,12 +261,7 @@ fn main() {
 
     let host_seal_return = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, flags: i32, data_ptr: i32, data_len: i32| {
-            println!("Hello from seal_return");
-            println!("flags: {}", flags);
-            println!("data_ptr: {}", data_ptr);
-            println!("data_len: {}", data_len);
-        },
+        host_seal_return,
     );
     linker
         .define("seal0", "seal_return", host_seal_return)
@@ -247,5 +286,8 @@ fn main() {
         .unwrap();
 
     // And finally we can call the wasm!
-    deploy.call(&mut store, ()).unwrap();
+    let result = deploy.call(&mut store, ());
+    println!("Result: {:?}", result);
+    let return_data = store.data().return_data.as_ref().unwrap();
+    println!("Return data: {:?}", return_data);
 }
