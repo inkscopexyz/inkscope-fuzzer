@@ -1,12 +1,12 @@
-use std::error::Error;
-use wasmi::*;
 use clap::Parser;
+use std::error::Error;
 use std::path::PathBuf;
+use wasmi::*;
 extern crate wabt;
 
 use wabt::wasm2wat;
 
-/// Simple program to greet a person
+/// Simple cli to read files
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -21,9 +21,7 @@ struct Args {
     /// The .wasm file of the contract to fuzz test
     #[arg(long)]
     wasm: Option<PathBuf>,
-
 }
-
 
 fn get_wat_from_wat(path: PathBuf) -> Result<String, Box<dyn Error>> {
     let wat = std::fs::read_to_string(path)?;
@@ -43,22 +41,28 @@ fn get_wat_from_contract(path: PathBuf) -> Result<String, Box<dyn Error>> {
     Ok(wat.to_string())
 }
 
-
 fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
-    let args_count = args.wat.is_some() as usize + args.contract.is_some() as usize + args.wasm.is_some() as usize;
+    let args_count = args.wat.is_some() as usize
+        + args.contract.is_some() as usize
+        + args.wasm.is_some() as usize;
     if args_count != 1 {
         return Err("Please specify exactly one of --wat, --contract, or --wasm".into());
     }
-    let wat = match args.wat {
-        Some(path) => get_wat_from_wat(path)?,
-        None => match args.contract {
-            Some(path) => get_wat_from_contract(path)?,
-            None => match args.wasm {
-                Some(path) => get_wat_from_wasm(path)?,
-                None => panic!("Please specify exactly one of --wat, --contract, or --wasm"),
+    let wat =
+        match args.wat {
+            Some(path) => get_wat_from_wat(path)?,
+            None => {
+                match args.contract {
+                    Some(path) => get_wat_from_contract(path)?,
+                    None => match args.wasm {
+                        Some(path) => get_wat_from_wasm(path)?,
+                        None => {
+                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
+                        }
+                    },
+                }
             }
-        }
-    };
+        };
     Ok(wat)
 }
 
@@ -101,27 +105,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-
-
 #[cfg(test)]
-mod tests {
-
-use assert_cmd::prelude::*; // Add methods on commands
-use predicates::prelude::*; // Used for writing assertions
-use std::process::Command; // Run programs
-
-#[test]
-fn wat_wasm_contract() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("runtime-fuzzer")?;
-
-    cmd.arg("--wat").arg("test/file/doesnt/exist");
-    cmd.arg("--wasm").arg("test/file/doesnt/exist");
-    cmd.arg("--contract").arg("test/file/doesnt/exist");
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Please specify exactly one of --wat, --contract, or --wasm"));
-
-    Ok(())
-}
-
-}
+#[path = "./tests/test.rs"]
+mod tests;
