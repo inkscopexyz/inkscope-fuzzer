@@ -1,96 +1,77 @@
 mod ext_env;
 mod flipper;
+use clap::Parser;
 use ext_env::*;
 use flipper::FLIPPER_WAT;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::error::Error;
+use std::path::PathBuf;
 use wasmi::core::Trap;
 use wasmi::*;
+extern crate wabt;
 
-/* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
-rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for
-different parachains.
+use wabt::wasm2wat;
 
-Whe should have our "T-like" Config that defines all these parameters and types. The Fuzzer will then depend? on that like so: Fuzzer<C: Config>
-We will have different configs resembling different real parachains environments.
+/// Simple cli to read files
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// The wat file of the contract to fuzz test
+    #[arg(long)]
+    wat: Option<PathBuf>,
 
-Config{
-    type AccountId = [u8; 32];
-    type Hash = [u8; 32];
-    type Balance = u128;
-    type CodeType = Vec<u8>;
-    type AllowDeprecatedInterface = bool;
-    type AllowUnstableInterface = bool;
-    type Determinism = bool;  // If true the execution should be deterministic and hence no indeterministic instructions are allowed.
-    type Schedule = Schedule;
-    type MaxCodeSize = MaxCodeSize;
-    type MaxMemoryPages = MaxMemoryPages;
-    type MaxTotalLength = MaxTotalLength;
-    type MaxSubjectLen = MaxSubjectLen;
-    type MaxCodeSize = MaxCodeSize;
-    type MaxGas = MaxGas;
-    type MaxValueSize = MaxValueSize;
-    type MaxStackHeight = MaxStackHeight;
-    type MaxDepth = MaxDepth;
-    type MaxTopics = MaxTopics;
-    type MaxEventSize = MaxEventSize;
-    type MaxReads = MaxReads;
-    type MaxWrites = MaxWrites;
-    type WeightPrice = WeightPrice;
-    type WeightPrice = WeightPrice;
+    /// The .contract file of the contract to fuzz test
+    #[arg(long)]
+    contract: Option<PathBuf>,
+
+    /// The .wasm file of the contract to fuzz test
+    #[arg(long)]
+    wasm: Option<PathBuf>,
 }
 
-Example types that may vary between parachains: AccountId, Hash, Balance, MaxSizeOfCode, ...
-Hash algorithm (for example to calculate the codehash) may vary.
-
-WorldState
-Then I magine we should have a world state containing a snapshot of all the emulated world state. Worldstate can have functions to modify it. Give balance,
-set accounts, etc.
-Should it be an overlay over actual blockchain?
-Accessing an account that does not exist?
-Should we download it from a block?
-Should we return an error?
-
-An account should have a balance, storage, codehash, etc.
-type Storage = HashMap<vec<u8>, vec<u8>>;
-Account{
-    balance: Balance,
-    storage: Storage,
-    ..
+fn get_wat_from_wat(path: PathBuf) -> Result<String, Box<dyn Error>> {
+    let wat = std::fs::read_to_string(path)?;
+    Ok(wat)
 }
 
-The world state contains a snapshot of all the accounts, code, etc. It should have functions to modify it. Give balance, etc.
-WorldState {
-    accounts: HashMap<AccountId, Account>,
-    code: HashMap<Hash, Code>,
-    ...
+fn get_wat_from_wasm(path: PathBuf) -> Result<String, Box<dyn Error>> {
+    let wasm = std::fs::read(path)?;
+    let wat = wasm2wat(wasm)?;
+    Ok(wat)
 }
 
-
-The emulated execution starts with a call() or a deploy(). The wasm engine stuff must be pregenerated and stored in the world state.
-A seed will suffice prandomly generate all the inputs needed for a run.
-
-CallFrame{
-    module: Module,
-    instance: Instance,
-    memory: Memory,
-    input: vec<u8>,
+fn get_wat_from_contract(path: PathBuf) -> Result<String, Box<dyn Error>> {
+    let contract = std::fs::read_to_string(path)?;
+    let contract: serde_json::Value = serde_json::from_str(&contract)?;
+    let wat = contract["wasm"]["wat"].as_str().unwrap();
+    Ok(wat.to_string())
 }
 
-Trace{
-    world_state: WorldState,
-    call_stack: Vec<CallFrame>,
+fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
+    let args_count = args.wat.is_some() as usize
+        + args.contract.is_some() as usize
+        + args.wasm.is_some() as usize;
+    if args_count != 1 {
+        return Err("Please specify exactly one of --wat, --contract, or --wasm".into());
+    }
+    let wat =
+        match args.wat {
+            Some(path) => get_wat_from_wat(path)?,
+            None => {
+                match args.contract {
+                    Some(path) => get_wat_from_contract(path)?,
+                    None => match args.wasm {
+                        Some(path) => get_wat_from_wasm(path)?,
+                        None => {
+                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
+                        }
+                    },
+                }
+            }
+        };
+    Ok(wat)
 }
-
-
-There should be a host functions trait somewhere that implements all the methods that could be called from the wasm code.
-The result from input() will depend on the seed and on some static information gathered from the current contract (constants or the abi)
-
-...
-
-Now we need to rewrite that doc in a more INK/Substrate way.
-
-*/
 
 /// Stores the input passed by the caller into the supplied buffer.
 ///
@@ -224,10 +205,12 @@ fn value_transferred(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+    let wat = get_wat(args)?;
+
     // Wasmi does not yet support parsing `.wat` so we have to convert
     // out `.wat` into `.wasm` before we compile and validate it.
-    let wasm = wat::parse_str(FLIPPER_WAT).unwrap();
-    //let code = vec![0];
+    let wasm = wat::parse_str(wat)?;
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
@@ -310,3 +293,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Return data: {:?}", return_data);
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "./tests/test.rs"]
+mod tests;
