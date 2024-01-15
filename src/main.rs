@@ -1,5 +1,4 @@
 mod ext_env;
-mod flipper;
 use clap::Parser;
 use ext_env::*;
 use std::collections::HashMap;
@@ -194,7 +193,7 @@ fn value_transferred(
         "HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})",
         out_ptr, out_len_ptr
     );
-    let (mut memory, state) = ctx
+    let (memory, state) = ctx
         .data()
         .memory
         .expect("No memory")
@@ -213,7 +212,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
-    let mut host_state = HostState {
+    let host_state = HostState {
         storage: HashMap::new(),
         input_buffer: vec![0xed, 0x4b, 0x9d, 0x1b],
         caller: [0; 32],
@@ -228,7 +227,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let host_get_storage = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32, param3: i32| -> i32 {
+        |_caller: Caller<'_, HostState>,
+         param: i32,
+         param1: i32,
+         param2: i32,
+         param3: i32|
+         -> i32 {
             println!("Hello from host_get_storage");
             println!("param: {}", param);
             println!("param1: {}", param1);
