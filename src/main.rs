@@ -2,7 +2,6 @@ mod ext_env;
 mod flipper;
 use clap::Parser;
 use ext_env::*;
-use flipper::FLIPPER_WAT;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
