@@ -2,10 +2,10 @@ mod ext_env;
 mod flipper;
 use ext_env::*;
 use flipper::FLIPPER_WAT;
-use wasmi::*;
-use wasmi::core::Trap;
-use std::convert::TryFrom;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use wasmi::core::Trap;
+use wasmi::*;
 
 /* Different parachains may implement pallet-contract in different ways. There are a number of types and parameters that could vary,
 rather slightly, bwtween parachains. We should have a way to configure the fuzzer to generate different emulated environments for
@@ -92,11 +92,6 @@ Now we need to rewrite that doc in a more INK/Substrate way.
 
 */
 
-
-
-
-
-
 /// Stores the input passed by the caller into the supplied buffer.
 ///
 /// The value is stored to linear memory at the address pointed to by `out_ptr`.
@@ -105,22 +100,31 @@ Now we need to rewrite that doc in a more INK/Substrate way.
 /// space at `out_ptr` is less than the size of the value a trap is triggered.
 ///
 
-
-fn host_input_fn(mut ctx: Caller<'_, HostState>, buf_ptr: u32, buf_len_ptr: u32) -> Result<(), Trap> {
+fn host_input_fn(
+    mut ctx: Caller<'_, HostState>,
+    buf_ptr: u32,
+    buf_len_ptr: u32,
+) -> Result<(), Trap> {
     //TODO: this needs to be a true logging facility
-    println!("HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})", buf_ptr, buf_len_ptr);
-    let (memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
-    
+    println!(
+        "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
+        buf_ptr, buf_len_ptr
+    );
+    let (memory, state) = ctx
+        .data()
+        .memory
+        .expect("No memory")
+        .data_and_store_mut(&mut ctx);
+
     state.decode_from_memory::<u32>(memory, buf_len_ptr)?;
 
     // TODO generate approiate inpud using host state and seed and abi and whatever
     let input = state.get_input();
     let input_len = u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
-    
+
     state.write_to_memory(memory, buf_ptr, input)?;
     state.encode_to_memory(memory, buf_len_ptr, input_len)
 }
-
 
 /// Set the value at the given key in the contract storage.
 ///
@@ -139,16 +143,20 @@ fn host_input_fn(mut ctx: Caller<'_, HostState>, buf_ptr: u32, buf_len_ptr: u32)
 /// Returns the size of the pre-existing value at the specified key if any. Otherwise
 /// `SENTINEL` is returned as a sentinel value.
 fn host_set_storage(
-    mut ctx: Caller<'_, HostState>, 
+    mut ctx: Caller<'_, HostState>,
     key_ptr: u32,
     key_len: u32,
     value_ptr: u32,
     value_len: u32,
-)  -> Result<u32, Trap> {
+) -> Result<u32, Trap> {
     //TODO: this needs to be a true logging facility
     println!("HOSTFN:: set_storage(key_ptr: 0x{:x}, key_len: 0x{:x}, value_ptr: 0x{:x}, value_len: 0x{:x})", key_ptr, key_len, value_ptr, value_len);
-    let (memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
-    
+    let (memory, state) = ctx
+        .data()
+        .memory
+        .expect("No memory")
+        .data_and_store_mut(&mut ctx);
+
     state.set_storage(memory, key_ptr, key_len, value_ptr, value_len)
 }
 
@@ -170,38 +178,52 @@ fn host_set_storage(
 ///
 /// Using a reserved bit triggers a trap.
 fn host_seal_return(
-    mut ctx: Caller<'_, HostState>, 
+    mut ctx: Caller<'_, HostState>,
     flags: i32,
     data_ptr: u32,
     data_len: u32,
 ) -> Result<(), Trap> {
-    println!("HOSTFN:: seal_return(flags: 0x{:x}, data_ptr: 0x{:x}, data_len: 0x{:x})", flags, data_ptr, data_len);
-    let (memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
+    println!(
+        "HOSTFN:: seal_return(flags: 0x{:x}, data_ptr: 0x{:x}, data_len: 0x{:x})",
+        flags, data_ptr, data_len
+    );
+    let (memory, state) = ctx
+        .data()
+        .memory
+        .expect("No memory")
+        .data_and_store_mut(&mut ctx);
     let return_data = state.read_from_memory(memory, data_ptr, data_len)?;
     state.set_return_data(return_data);
     Err(Trap::i32_exit(flags))
 }
 
-	/// Stores the value transferred along with this call/instantiate into the supplied buffer.
-	///
-	/// The value is stored to linear memory at the address pointed to by `out_ptr`.
-	/// `out_len_ptr` must point to a `u32` value that describes the available space at
-	/// `out_ptr`. This call overwrites it with the size of the value. If the available
-	/// space at `out_ptr` is less than the size of the value a trap is triggered.
-	///
-	/// The data is encoded as `T::Balance`.
-	fn value_transferred(
-		mut ctx: Caller<'_, HostState>, 
-		out_ptr: u32,
-		out_len_ptr: u32,
-	) -> Result<(), Trap> {
-        println!("HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})", out_ptr, out_len_ptr);
-        let (mut memory, state ) = ctx.data().memory.expect("No memory").data_and_store_mut(&mut ctx);
+/// Stores the value transferred along with this call/instantiate into the supplied buffer.
+///
+/// The value is stored to linear memory at the address pointed to by `out_ptr`.
+/// `out_len_ptr` must point to a `u32` value that describes the available space at
+/// `out_ptr`. This call overwrites it with the size of the value. If the available
+/// space at `out_ptr` is less than the size of the value a trap is triggered.
+///
+/// The data is encoded as `T::Balance`.
+fn value_transferred(
+    mut ctx: Caller<'_, HostState>,
+    out_ptr: u32,
+    out_len_ptr: u32,
+) -> Result<(), Trap> {
+    println!(
+        "HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})",
+        out_ptr, out_len_ptr
+    );
+    let (mut memory, state) = ctx
+        .data()
+        .memory
+        .expect("No memory")
+        .data_and_store_mut(&mut ctx);
 
-        state.encode_to_memory_bounded(memory, out_ptr, out_len_ptr, state.value_transferred)
-	}
+    state.encode_to_memory_bounded(memory, out_ptr, out_len_ptr, state.value_transferred)
+}
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wasmi does not yet support parsing `.wat` so we have to convert
     // out `.wat` into `.wasm` before we compile and validate it.
     let wasm = wat::parse_str(FLIPPER_WAT).unwrap();
@@ -209,15 +231,14 @@ fn main() {
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
-    let mut host_state =
-        HostState {
-            storage: HashMap::new(),
-            input_buffer: vec![  0xed, 0x4b, 0x9d, 0x1b ],
-            caller: [0; 32],
-            value_transferred: 0,
-            memory: None,
-            return_data: None,
-        };
+    let mut host_state = HostState {
+        storage: HashMap::new(),
+        input_buffer: vec![0xed, 0x4b, 0x9d, 0x1b],
+        caller: [0; 32],
+        value_transferred: 0,
+        memory: None,
+        return_data: None,
+    };
     let mut store = Store::new(&contract.engine, host_state);
     let mut linker = Linker::new(&contract.engine);
     let memory = Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
@@ -238,31 +259,21 @@ fn main() {
         .define("seal1", "get_storage", host_get_storage)
         .unwrap();
 
-    let host_set_storage = Func::wrap(
-        &mut store,
-        host_set_storage,
-    );
+    let host_set_storage = Func::wrap(&mut store, host_set_storage);
     linker
         .define("seal2", "set_storage", host_set_storage)
         .unwrap();
 
-    let host_value_transferred = Func::wrap(
-        &mut store,
-        value_transferred,
-    );
+    let host_value_transferred = Func::wrap(&mut store, value_transferred);
     linker
         .define("seal0", "value_transferred", host_value_transferred)
         .unwrap();
 
-    let host_input = Func::wrap(
-        &mut store, host_input_fn);
+    let host_input = Func::wrap(&mut store, host_input_fn);
 
     linker.define("seal0", "input", host_input).unwrap();
 
-    let host_seal_return = Func::wrap(
-        &mut store,
-        host_seal_return,
-    );
+    let host_seal_return = Func::wrap(&mut store, host_seal_return);
     linker
         .define("seal0", "seal_return", host_seal_return)
         .unwrap();
@@ -271,23 +282,31 @@ fn main() {
         .define("env", "memory", memory)
         .expect("We just created the Linker. It has no definitions with this name; qed");
 
-    let res_instance: Result<InstancePre, Error> = linker.instantiate(&mut store, &contract.module);
-    match &res_instance {
-        Ok(instance) => {
+    let instance = linker
+        .instantiate(&mut store, &contract.module)
+        .map_err(|e| {
+            eprintln!("Error: {}", e);
+            Box::new(e) as Box<dyn std::error::Error>
+        })
+        .and_then(|instance| {
             println!("Instance created!");
-        }
-        Err(e) => println!("Error: {}", e),
-    };
-    let instance = res_instance.unwrap();
-    let started_instance = instance.start(&mut store);
-    let deploy = started_instance
-        .unwrap()
+            instance.start(&mut store).map_err(|e| {
+                eprintln!("Error starting instance: {}", e);
+                Box::new(e) as Box<dyn std::error::Error>
+            })
+        })?;
+
+    let deploy = instance
         .get_typed_func::<(), ()>(&store, "deploy")
-        .unwrap();
+        .map_err(|e| {
+            eprintln!("Error getting typed function 'deploy': {}", e);
+            Box::new(e) as Box<dyn std::error::Error>
+        })?;
 
     // And finally we can call the wasm!
     let result = deploy.call(&mut store, ());
     println!("Result: {:?}", result);
     let return_data = store.data().return_data.as_ref().unwrap();
     println!("Return data: {:?}", return_data);
+    Ok(())
 }
