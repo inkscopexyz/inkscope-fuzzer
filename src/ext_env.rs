@@ -1,7 +1,14 @@
-use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
+use parity_scale_codec::{
+    Decode,
+    DecodeLimit,
+    Encode,
+    MaxEncodedLen,
+};
 use std::collections::HashMap;
-use wasmi::core::Trap;
-use wasmi::*;
+use wasmi::{
+    core::Trap,
+    *,
+};
 
 pub struct LoadedModule {
     pub module: Module,
@@ -10,16 +17,14 @@ pub struct LoadedModule {
 
 impl LoadedModule {
     /// Creates a new instance of `LoadedModule`.
-    ///
-    /// The inner Wasm module is checked not to have restricted WebAssembly proposals.
-    /// Returns `Err` if the `code` cannot be deserialized or if it contains an invalid module.
     pub fn new(
         code: &[u8],
         determinism: bool,
         stack_limits: Option<StackLimits>,
     ) -> Result<Self, &'static str> {
-        // NOTE: wasmi does not support unstable WebAssembly features. The module is implicitly
-        // checked for not having those ones when creating `wasmi::Module` below.
+        // NOTE: wasmi does not support unstable WebAssembly features. The module is
+        // implicitly checked for not having those ones when creating
+        // `wasmi::Module` below.
         let mut config = Config::default();
         config
             .wasm_multi_value(false)
@@ -39,7 +44,8 @@ impl LoadedModule {
         }
 
         let engine = Engine::new(&config);
-        let module = Module::new(&engine, code).map_err(|_| "Can't load the module into wasmi!")?;
+        let module = Module::new(&engine, code)
+            .map_err(|_| "Can't load the module into wasmi!")?;
 
         // Return a `LoadedModule` instance with
         // __valid__ module.
@@ -110,7 +116,12 @@ impl HostState {
     }
 
     /// Write the given buffer to the designated location in the memory.
-    pub fn write_to_memory(&self, memory: &mut [u8], ptr: u32, buf: &[u8]) -> Result<(), Trap> {
+    pub fn write_to_memory(
+        &self,
+        memory: &mut [u8],
+        ptr: u32,
+        buf: &[u8],
+    ) -> Result<(), Trap> {
         let ptr = ptr as usize;
         let bound_checked = memory
             .get_mut(ptr..ptr + buf.len())
