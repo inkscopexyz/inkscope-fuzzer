@@ -1,16 +1,8 @@
 mod ext_env;
 use clap::Parser;
 use ext_env::*;
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    error::Error,
-    path::PathBuf,
-};
-use wasmi::{
-    core::Trap,
-    *,
-};
+use std::{collections::HashMap, error::Error, path::PathBuf};
+use wasmi::{core::Trap, *};
 extern crate wabt;
 
 use wabt::wasm2wat;
@@ -59,50 +51,17 @@ fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
     }
     let wat = match args.wat {
         Some(path) => get_wat_from_wat(path)?,
-        None => {
-            match args.contract {
-                Some(path) => get_wat_from_contract(path)?,
+        None => match args.contract {
+            Some(path) => get_wat_from_contract(path)?,
+            None => match args.wasm {
+                Some(path) => get_wat_from_wasm(path)?,
                 None => {
-                    match args.wasm {
-                        Some(path) => get_wat_from_wasm(path)?,
-                        None => {
-                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
-                        }
-                    }
+                    panic!("Please specify exactly one of --wat, --contract, or --wasm")
                 }
-            }
-        }
+            },
+        },
     };
     Ok(wat)
-}
-
-/// Stores the input passed by the caller into the supplied buffer.
-
-fn host_input_fn(
-    mut ctx: Caller<'_, HostState>,
-    buf_ptr: u32,
-    buf_len_ptr: u32,
-) -> Result<(), Trap> {
-    // TODO: this needs to be a true logging facility
-    println!(
-        "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
-        buf_ptr, buf_len_ptr
-    );
-    let (memory, state) = ctx
-        .data()
-        .memory
-        .expect("No memory")
-        .data_and_store_mut(&mut ctx);
-
-    state.decode_from_memory::<u32>(memory, buf_len_ptr)?;
-
-    // TODO generate approiate inpud using host state and seed and abi and whatever
-    let input = state.get_input();
-    let input_len =
-        u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
-
-    state.write_to_memory(memory, buf_ptr, input)?;
-    state.encode_to_memory(memory, buf_len_ptr, input_len)
 }
 
 /// Set the value at the given key in the contract storage.
@@ -242,9 +201,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .define("seal0", "value_transferred", host_value_transferred)
         .unwrap();
 
-    let host_input = Func::wrap(&mut store, host_input_fn);
+    // TODO: make a macro! that generates the next 2 lines by something like this...
+    // link_host_function!(state.seal0_input)
+    let host_function = Func::wrap(
+        &mut store,
+        |mut ctx: Caller<'_, HostState>,
+         buf_ptr: u32,
+         buf_len_ptr: u32|
+         -> Result<(), Trap> {
+            // TODO: this needs to be a true logging facility
+            println!(
+                "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
+                buf_ptr, buf_len_ptr
+            );
+            let (memory, state) = ctx
+                .data()
+                .memory
+                .expect("No memory")
+                .data_and_store_mut(&mut ctx);
 
-    linker.define("seal0", "input", host_input).unwrap();
+            state.seal0_input(memory, buf_ptr, buf_len_ptr)
+        },
+    );
+    linker.define("seal0", "input", host_function).unwrap();
+
+    // host_function_macro!(host_state::HostState::seal0_function);
 
     let host_seal_return = Func::wrap(&mut store, host_seal_return);
     linker

@@ -165,4 +165,22 @@ impl HostState {
     pub fn set_return_data(&mut self, return_data: &[u8]) {
         self.return_data = Some(return_data.into());
     }
+
+    /// Stores the input passed by the caller into the supplied buffer.
+    pub fn seal0_input(
+        &mut self,
+        memory: &mut [u8],
+        buf_ptr: u32,
+        buf_len_ptr: u32,
+    ) -> Result<(), Trap> {
+        self.decode_from_memory::<u32>(memory, buf_len_ptr)?;
+
+        // TODO generate approiate inpud using host state and seed and abi and whatever
+        let input = self.get_input();
+        let input_len =
+            u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
+
+        self.write_to_memory(memory, buf_ptr, input)?;
+        self.encode_to_memory(memory, buf_len_ptr, input_len)
+    }
 }
