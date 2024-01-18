@@ -185,14 +185,14 @@ impl HostState {
         let input_len =
             u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
 
-        if (input_len > requested_bytes) {
+        if input_len > requested_bytes {
             return Err(Trap::new(format!(
                 "Requested {} bytes, but only {} bytes available",
                 requested_bytes, input_len
             )));
         }
 
-        self.write_to_memory(memory, buf_ptr, &input)?;
+        self.write_to_memory(memory, buf_ptr, input)?;
         self.encode_to_memory(memory, buf_len_ptr, input_len)?;
         Ok(())
     }
@@ -205,7 +205,6 @@ mod test {
         use super::*;
         #[test]
         fn happy_path() {
-            let buf_ptr = 0;
             let buf_len_ptr = 0;
             let read_size = 1000;
 
@@ -241,15 +240,13 @@ mod test {
             assert_eq!(buf_ptr_size, host_state.input_buffer.len() as u32);
 
             assert!(
-                mem[buf_len_ptr_size as usize
-                    ..buf_len_ptr_size as usize + host_state.input_buffer.len() as usize]
+                mem[buf_len_ptr_size..buf_len_ptr_size + host_state.input_buffer.len()]
                     == host_state.input_buffer
             )
         }
 
         #[test]
         fn buf_smaller_than_input() {
-            let buf_ptr = 0;
             let buf_len_ptr = 0;
             let read_size = 2; // This is smaller than the input buffer len
 
