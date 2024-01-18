@@ -1,7 +1,14 @@
-use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
+use parity_scale_codec::{
+    Decode,
+    DecodeLimit,
+    Encode,
+    MaxEncodedLen,
+};
 use std::collections::HashMap;
-use wasmi::core::Trap;
-use wasmi::*;
+use wasmi::{
+    core::Trap,
+    *,
+};
 
 pub struct LoadedModule {
     pub module: Module,
@@ -10,16 +17,14 @@ pub struct LoadedModule {
 
 impl LoadedModule {
     /// Creates a new instance of `LoadedModule`.
-    ///
-    /// The inner Wasm module is checked not to have restricted WebAssembly proposals.
-    /// Returns `Err` if the `code` cannot be deserialized or if it contains an invalid module.
     pub fn new(
         code: &[u8],
         determinism: bool,
         stack_limits: Option<StackLimits>,
     ) -> Result<Self, &'static str> {
-        // NOTE: wasmi does not support unstable WebAssembly features. The module is implicitly
-        // checked for not having those ones when creating `wasmi::Module` below.
+        // NOTE: wasmi does not support unstable WebAssembly features. The module is
+        // implicitly checked for not having those ones when creating
+        // `wasmi::Module` below.
         let mut config = Config::default();
         config
             .wasm_multi_value(false)
@@ -39,7 +44,8 @@ impl LoadedModule {
         }
 
         let engine = Engine::new(&config);
-        let module = Module::new(&engine, code).map_err(|_| "Can't load the module into wasmi!")?;
+        let module = Module::new(&engine, code)
+            .map_err(|_| "Can't load the module into wasmi!")?;
 
         // Return a `LoadedModule` instance with
         // __valid__ module.
@@ -71,13 +77,9 @@ impl HostState {
         ptr: u32,
     ) -> Result<D, Trap> {
         let ptr = ptr as usize;
-        let mut bound_checked =
-            memory
-                .get(ptr..ptr + D::max_encoded_len() as usize)
-                .ok_or(Trap::new(format!(
-                    "Pointer out of bound reading at {}",
-                    ptr
-                )))?;
+        let mut bound_checked = memory
+            .get(ptr..ptr + D::max_encoded_len())
+            .ok_or(Trap::new(format!("Pointer out of bound reading at {}", ptr)))?;
 
         D::decode_with_depth_limit(MAX_DECODE_NESTING, &mut bound_checked)
             .map_err(|_| Trap::new(format!("Error decoding at {}", ptr)))
@@ -114,14 +116,16 @@ impl HostState {
     }
 
     /// Write the given buffer to the designated location in the memory.
-    pub fn write_to_memory(&self, memory: &mut [u8], ptr: u32, buf: &[u8]) -> Result<(), Trap> {
+    pub fn write_to_memory(
+        &self,
+        memory: &mut [u8],
+        ptr: u32,
+        buf: &[u8],
+    ) -> Result<(), Trap> {
         let ptr = ptr as usize;
         let bound_checked = memory
             .get_mut(ptr..ptr + buf.len())
-            .ok_or(Trap::new(format!(
-                "Pointer out of bound writing at {}",
-                ptr
-            )))?;
+            .ok_or(Trap::new(format!("Pointer out of bound writing at {}", ptr)))?;
 
         bound_checked.copy_from_slice(buf);
         Ok(())
@@ -136,12 +140,9 @@ impl HostState {
     ) -> Result<&'a [u8], Trap> {
         let ptr = ptr as usize;
 
-        let mut bound_checked = memory
+        let bound_checked = memory
             .get(ptr..ptr + len as usize)
-            .ok_or(Trap::new(format!(
-                "Pointer out of bound reading at {}",
-                ptr
-            )))?;
+            .ok_or(Trap::new(format!("Pointer out of bound reading at {}", ptr)))?;
 
         Ok(bound_checked)
     }
@@ -166,12 +167,6 @@ impl HostState {
     }
 
     /// Stores the input passed by the caller into the supplied buffer.
-    ///
-    /// The value is stored to linear memory at the address pointed to by `out_ptr`.
-    /// `out_len_ptr` must point to a u32 value that describes the available space at
-    /// `out_ptr`. This call overwrites it with the size of the value. If the available
-    /// space at `out_ptr` is less than the size of the value a trap is triggered.
-    ///
     pub fn seal0_input(
         &mut self,
         memory: &mut [u8],
@@ -182,12 +177,10 @@ impl HostState {
 
         // TODO generate approiate inpud using host state and seed and abi and whatever
         let input = self.get_input();
-        let input_len = u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
+        let input_len =
+            u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
 
         self.write_to_memory(memory, buf_ptr, input)?;
         self.encode_to_memory(memory, buf_len_ptr, input_len)
     }
 }
-
-
-

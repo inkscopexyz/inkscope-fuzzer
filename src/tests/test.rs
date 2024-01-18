@@ -9,9 +9,9 @@ fn wat_wasm_contract() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--wat").arg("test/file/doesnt/exist");
     cmd.arg("--wasm").arg("test/file/doesnt/exist");
     cmd.arg("--contract").arg("test/file/doesnt/exist");
-    cmd.assert().failure().stderr(
-        predicate::str::contains("Please specify exactly one of --wat, --contract, or --wasm")
-    );
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Please specify exactly one of --wat, --contract, or --wasm",
+    ));
 
     Ok(())
 }

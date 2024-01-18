@@ -1,34 +1,19 @@
 mod ext_env;
-mod flipper;
 use clap::Parser;
 use ext_env::*;
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::path::PathBuf;
-use wasmi::core::Trap;
-use wasmi::*;
-
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    error::Error,
+    path::PathBuf,
+};
+use wasmi::{
+    core::Trap,
+    *,
+};
 extern crate wabt;
 
 use wabt::wasm2wat;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /// Simple cli to read files
 #[derive(Parser, Debug)]
@@ -74,36 +59,24 @@ fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
     }
     let wat = match args.wat {
         Some(path) => get_wat_from_wat(path)?,
-        None => match args.contract {
-            Some(path) => get_wat_from_contract(path)?,
-            None => match args.wasm {
-                Some(path) => get_wat_from_wasm(path)?,
+        None => {
+            match args.contract {
+                Some(path) => get_wat_from_contract(path)?,
                 None => {
-                    panic!("Please specify exactly one of --wat, --contract, or --wasm")
+                    match args.wasm {
+                        Some(path) => get_wat_from_wasm(path)?,
+                        None => {
+                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
+                        }
+                    }
                 }
-            },
-        },
+            }
+        }
     };
     Ok(wat)
 }
 
-
 /// Set the value at the given key in the contract storage.
-///
-/// The key and value lengths must not exceed the maximums defined by the contracts module
-/// parameters. Specifying a `value_len` of zero will store an empty value.
-///
-/// # Parameters
-///
-/// - `key_ptr`: pointer into the linear memory where the location to store the value is placed.
-/// - `key_len`: the length of the key in bytes.
-/// - `value_ptr`: pointer into the linear memory where the value to set is placed.
-/// - `value_len`: the length of the value in bytes.
-///
-/// # Return Value
-///
-/// Returns the size of the pre-existing value at the specified key if any. Otherwise
-/// `SENTINEL` is returned as a sentinel value.
 fn host_set_storage(
     mut ctx: Caller<'_, HostState>,
     key_ptr: u32,
@@ -111,7 +84,7 @@ fn host_set_storage(
     value_ptr: u32,
     value_len: u32,
 ) -> Result<u32, Trap> {
-    //TODO: this needs to be a true logging facility
+    // TODO: this needs to be a true logging facility
     println!("HOSTFN:: set_storage(key_ptr: 0x{:x}, key_len: 0x{:x}, value_ptr: 0x{:x}, value_len: 0x{:x})", key_ptr, key_len, value_ptr, value_len);
     let (memory, state) = ctx
         .data()
@@ -159,7 +132,8 @@ fn host_seal_return(
     Err(Trap::i32_exit(flags))
 }
 
-/// Stores the value transferred along with this call/instantiate into the supplied buffer.
+/// Stores the value transferred along with this call/instantiate into the supplied
+/// buffer.
 ///
 /// The value is stored to linear memory at the address pointed to by `out_ptr`.
 /// `out_len_ptr` must point to a `u32` value that describes the available space at
@@ -176,7 +150,7 @@ fn value_transferred(
         "HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})",
         out_ptr, out_len_ptr
     );
-    let (mut memory, state) = ctx
+    let (memory, state) = ctx
         .data()
         .memory
         .expect("No memory")
@@ -195,7 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
-    let mut host_state = HostState {
+    let host_state = HostState {
         storage: HashMap::new(),
         input_buffer: vec![0xed, 0x4b, 0x9d, 0x1b],
         caller: [0; 32],
@@ -205,12 +179,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut store = Store::new(&contract.engine, host_state);
     let mut linker = Linker::new(&contract.engine);
-    let memory = Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
+    let memory =
+        Memory::new(&mut store, MemoryType::new(2, Some(16)).expect("")).expect("");
     store.data_mut().memory = Some(memory);
 
     let host_get_storage = Func::wrap(
         &mut store,
-        |caller: Caller<'_, HostState>, param: i32, param1: i32, param2: i32, param3: i32| -> i32 {
+        |_caller: Caller<'_, HostState>,
+         param: i32,
+         param1: i32,
+         param2: i32,
+         param3: i32|
+         -> i32 {
             println!("Hello from host_get_storage");
             println!("param: {}", param);
             println!("param1: {}", param1);
@@ -233,13 +213,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .define("seal0", "value_transferred", host_value_transferred)
         .unwrap();
 
-
     // TODO: make a macro! that generates the next 2 lines by something like this...
     // link_host_function!(state.seal0_input)
     let host_function = Func::wrap(
         &mut store,
-        |mut ctx: Caller<'_, HostState>, buf_ptr: u32, buf_len_ptr: u32| -> Result<(), Trap> {
-            //TODO: this needs to be a true logging facility
+        |mut ctx: Caller<'_, HostState>,
+         buf_ptr: u32,
+         buf_len_ptr: u32|
+         -> Result<(), Trap> {
+            // TODO: this needs to be a true logging facility
             println!(
                 "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
                 buf_ptr, buf_len_ptr
@@ -254,9 +236,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     );
     linker.define("seal0", "input", host_function).unwrap();
-    
-    //host_function_macro!(host_state::HostState::seal0_function);
 
+    // host_function_macro!(host_state::HostState::seal0_function);
 
     let host_seal_return = Func::wrap(&mut store, host_seal_return);
     linker
@@ -299,7 +280,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 #[path = "./tests/test.rs"]
 mod tests;
-
-
-
-
