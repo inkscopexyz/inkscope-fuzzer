@@ -53,7 +53,7 @@ impl LoadedModule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HostState {
     pub storage: HashMap<Vec<u8>, Vec<u8>>,
     pub input_buffer: Vec<u8>,
@@ -68,6 +68,10 @@ const MAX_DECODE_NESTING: u32 = 256;
 impl HostState {
     pub fn get_input(&self) -> &[u8] {
         &self.input_buffer
+    }
+
+    pub fn set_input(&mut self, input: Vec<u8>) {
+        self.input_buffer = input;
     }
 
     /// Reads and decodes a type with a size fixed at compile time from contract memory.
@@ -90,9 +94,10 @@ impl HostState {
         memory: &mut [u8],
         ptr: u32,
         value: E,
-    ) -> Result<(), Trap> {
+    ) -> Result<usize, Trap> {
         let buffer = value.encode();
-        self.write_to_memory(memory, ptr, &buffer)
+        self.write_to_memory(memory, ptr, &buffer)?;
+        Ok(buffer.len())
     }
 
     pub fn encode_to_memory_bounded<E: Encode + MaxEncodedLen + std::fmt::Debug>(
@@ -173,14 +178,144 @@ impl HostState {
         buf_ptr: u32,
         buf_len_ptr: u32,
     ) -> Result<(), Trap> {
-        self.decode_from_memory::<u32>(memory, buf_len_ptr)?;
+        let requested_bytes = self.decode_from_memory::<u32>(memory, buf_len_ptr)?;
 
         // TODO generate approiate inpud using host state and seed and abi and whatever
         let input = self.get_input();
         let input_len =
             u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
 
-        self.write_to_memory(memory, buf_ptr, input)?;
-        self.encode_to_memory(memory, buf_len_ptr, input_len)
+        if (input_len > requested_bytes) {
+            return Err(Trap::new(format!(
+                "Requested {} bytes, but only {} bytes available",
+                requested_bytes, input_len
+            )));
+        }
+
+        self.write_to_memory(memory, buf_ptr, &input)?;
+        self.encode_to_memory(memory, buf_len_ptr, input_len)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    pub mod seal0_input {
+        use super::*;
+        #[test]
+        fn happy_path() {
+            let buf_ptr = 0;
+            let buf_len_ptr = 0;
+            let read_size = 1000;
+
+            let mut host_state = HostState {
+                storage: HashMap::new(),
+                input_buffer: vec![1, 2, 3, 4],
+                caller: [0; 32],
+                value_transferred: 0,
+                memory: None,
+                return_data: None,
+            };
+
+            // Dumb memory
+            let mut mem = [0; 1024];
+            println!("mem: {:?}", mem);
+
+            let buf_len_ptr_size = host_state
+                .encode_to_memory(mem.as_mut_slice(), buf_len_ptr, read_size)
+                .expect("This should work");
+
+            println!("mem: {:?}", mem);
+            assert_eq!(buf_len_ptr_size, read_size.encode().len()); // At the time of writing this is 4 bytes, same as u32::max_encoded_len()
+
+            host_state
+                .seal0_input(mem.as_mut_slice(), buf_len_ptr_size as u32, buf_len_ptr)
+                .expect("Pls dont fail");
+
+            println!("mem: {:?}", mem);
+            let buf_ptr_size: u32 = host_state
+                .decode_from_memory::<u32>(mem.as_mut_slice(), buf_len_ptr)
+                .expect("Pls dont fail");
+
+            assert_eq!(buf_ptr_size, host_state.input_buffer.len() as u32);
+
+            assert!(
+                mem[buf_len_ptr_size as usize
+                    ..buf_len_ptr_size as usize + host_state.input_buffer.len() as usize]
+                    == host_state.input_buffer
+            )
+        }
+
+        #[test]
+        fn buf_smaller_than_input() {
+            let buf_ptr = 0;
+            let buf_len_ptr = 0;
+            let read_size = 2; // This is smaller than the input buffer len
+
+            let mut host_state = HostState {
+                storage: HashMap::new(),
+                input_buffer: vec![1, 2, 3, 4],
+                caller: [0; 32],
+                value_transferred: 0,
+                memory: None,
+                return_data: None,
+            };
+
+            // Dumb memory
+            let mut mem = [0; 1024];
+            println!("mem: {:?}", mem);
+
+            let buf_len_ptr_size = host_state
+                .encode_to_memory(mem.as_mut_slice(), buf_len_ptr, read_size)
+                .expect("This should work");
+
+            println!("mem: {:?}", mem);
+            assert_eq!(buf_len_ptr_size, read_size.encode().len());
+
+            assert!(host_state
+                .seal0_input(mem.as_mut_slice(), buf_len_ptr_size as u32, buf_len_ptr)
+                .is_err());
+        }
+
+        #[test]
+        fn buf_out_of_bound() {
+            let buf_len_ptr = 0;
+            let read_size = 6; // This is smaller than the input buffer len
+
+            let mut host_state = HostState {
+                storage: HashMap::new(),
+                input_buffer: vec![1, 2, 3, 4],
+                caller: [0; 32],
+                value_transferred: 0,
+                memory: None,
+                return_data: None,
+            };
+
+            // Dumb memory
+            let mut mem = [0; 4];
+            println!("mem: {:?}", mem);
+
+            let buf_len_ptr_size = host_state
+                .encode_to_memory(mem.as_mut_slice(), buf_len_ptr, read_size)
+                .expect("This should work");
+
+            println!("mem: {:?}", mem);
+            assert_eq!(buf_len_ptr_size, read_size.encode().len());
+
+            let result = host_state.seal0_input(
+                mem.as_mut_slice(),
+                buf_len_ptr_size as u32,
+                buf_len_ptr,
+            );
+
+            match result {
+                Ok(_) => panic!("Should have failed"),
+                Err(e) => {
+                    println!("e: {:?}", e);
+                    assert!(e.to_string().contains("Pointer out of bound reading at 0"))
+                }
+            }
+        }
     }
 }
