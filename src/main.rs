@@ -8,9 +8,27 @@ use std::error::Error;
 use std::path::PathBuf;
 use wasmi::core::Trap;
 use wasmi::*;
+
 extern crate wabt;
 
 use wabt::wasm2wat;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// Simple cli to read files
 #[derive(Parser, Debug)]
@@ -54,57 +72,21 @@ fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
     if args_count != 1 {
         return Err("Please specify exactly one of --wat, --contract, or --wasm".into());
     }
-    let wat =
-        match args.wat {
-            Some(path) => get_wat_from_wat(path)?,
-            None => {
-                match args.contract {
-                    Some(path) => get_wat_from_contract(path)?,
-                    None => match args.wasm {
-                        Some(path) => get_wat_from_wasm(path)?,
-                        None => {
-                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
-                        }
-                    },
+    let wat = match args.wat {
+        Some(path) => get_wat_from_wat(path)?,
+        None => match args.contract {
+            Some(path) => get_wat_from_contract(path)?,
+            None => match args.wasm {
+                Some(path) => get_wat_from_wasm(path)?,
+                None => {
+                    panic!("Please specify exactly one of --wat, --contract, or --wasm")
                 }
-            }
-        };
+            },
+        },
+    };
     Ok(wat)
 }
 
-/// Stores the input passed by the caller into the supplied buffer.
-///
-/// The value is stored to linear memory at the address pointed to by `out_ptr`.
-/// `out_len_ptr` must point to a u32 value that describes the available space at
-/// `out_ptr`. This call overwrites it with the size of the value. If the available
-/// space at `out_ptr` is less than the size of the value a trap is triggered.
-///
-
-fn host_input_fn(
-    mut ctx: Caller<'_, HostState>,
-    buf_ptr: u32,
-    buf_len_ptr: u32,
-) -> Result<(), Trap> {
-    //TODO: this needs to be a true logging facility
-    println!(
-        "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
-        buf_ptr, buf_len_ptr
-    );
-    let (memory, state) = ctx
-        .data()
-        .memory
-        .expect("No memory")
-        .data_and_store_mut(&mut ctx);
-
-    state.decode_from_memory::<u32>(memory, buf_len_ptr)?;
-
-    // TODO generate approiate inpud using host state and seed and abi and whatever
-    let input = state.get_input();
-    let input_len = u32::try_from(input.len()).expect("Buffer length must be less than 4Gigs");
-
-    state.write_to_memory(memory, buf_ptr, input)?;
-    state.encode_to_memory(memory, buf_len_ptr, input_len)
-}
 
 /// Set the value at the given key in the contract storage.
 ///
@@ -251,9 +233,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .define("seal0", "value_transferred", host_value_transferred)
         .unwrap();
 
-    let host_input = Func::wrap(&mut store, host_input_fn);
 
-    linker.define("seal0", "input", host_input).unwrap();
+    // TODO: make a macro! that generates the next 2 lines by something like this...
+    // link_host_function!(state.seal0_input)
+    let host_function = Func::wrap(
+        &mut store,
+        |mut ctx: Caller<'_, HostState>, buf_ptr: u32, buf_len_ptr: u32| -> Result<(), Trap> {
+            //TODO: this needs to be a true logging facility
+            println!(
+                "HOSTFN:: input(buf_ptr: 0x{:x}, buf_len_ptr: 0x{:x})",
+                buf_ptr, buf_len_ptr
+            );
+            let (memory, state) = ctx
+                .data()
+                .memory
+                .expect("No memory")
+                .data_and_store_mut(&mut ctx);
+
+            state.seal0_input(memory, buf_ptr, buf_len_ptr)
+        },
+    );
+    linker.define("seal0", "input", host_function).unwrap();
+    
+    //host_function_macro!(host_state::HostState::seal0_function);
+
 
     let host_seal_return = Func::wrap(&mut store, host_seal_return);
     linker
@@ -296,3 +299,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 #[path = "./tests/test.rs"]
 mod tests;
+
+
+
+
