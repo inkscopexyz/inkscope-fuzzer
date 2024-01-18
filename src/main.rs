@@ -1,16 +1,8 @@
 mod ext_env;
 use clap::Parser;
 use ext_env::*;
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    error::Error,
-    path::PathBuf,
-};
-use wasmi::{
-    core::Trap,
-    *,
-};
+use std::{collections::HashMap, error::Error, path::PathBuf};
+use wasmi::{core::Trap, *};
 extern crate wabt;
 
 use wabt::wasm2wat;
@@ -59,19 +51,15 @@ fn get_wat(args: Args) -> Result<String, Box<dyn Error>> {
     }
     let wat = match args.wat {
         Some(path) => get_wat_from_wat(path)?,
-        None => {
-            match args.contract {
-                Some(path) => get_wat_from_contract(path)?,
+        None => match args.contract {
+            Some(path) => get_wat_from_contract(path)?,
+            None => match args.wasm {
+                Some(path) => get_wat_from_wasm(path)?,
                 None => {
-                    match args.wasm {
-                        Some(path) => get_wat_from_wasm(path)?,
-                        None => {
-                            panic!("Please specify exactly one of --wat, --contract, or --wasm")
-                        }
-                    }
+                    panic!("Please specify exactly one of --wat, --contract, or --wasm")
                 }
-            }
-        }
+            },
+        },
     };
     Ok(wat)
 }
