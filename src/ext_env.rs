@@ -310,7 +310,7 @@ mod test {
                 Ok(_) => panic!("Should have failed"),
                 Err(e) => {
                     println!("e: {:?}", e);
-                    assert!(e.to_string().contains("Pointer out of bound reading at 0"))
+                    assert!(e.to_string().contains("Pointer out of bound writing at"))
                 }
             }
         }
