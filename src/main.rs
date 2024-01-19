@@ -51,33 +51,6 @@ fn host_seal_return(
     Err(Trap::i32_exit(flags))
 }
 
-/// Stores the value transferred along with this call/instantiate into the supplied
-/// buffer.
-///
-/// The value is stored to linear memory at the address pointed to by `out_ptr`.
-/// `out_len_ptr` must point to a `u32` value that describes the available space at
-/// `out_ptr`. This call overwrites it with the size of the value. If the available
-/// space at `out_ptr` is less than the size of the value a trap is triggered.
-///
-/// The data is encoded as `T::Balance`.
-fn value_transferred(
-    mut ctx: Caller<'_, HostState>,
-    out_ptr: u32,
-    out_len_ptr: u32,
-) -> Result<(), Trap> {
-    println!(
-        "HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})",
-        out_ptr, out_len_ptr
-    );
-    let (memory, state) = ctx
-        .data()
-        .memory
-        .expect("No memory")
-        .data_and_store_mut(&mut ctx);
-
-    state.encode_to_memory_bounded(memory, out_ptr, out_len_ptr, state.value_transferred)
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let wat = get_wat(args)?;
@@ -150,9 +123,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .define("seal2", "set_storage", hfn_seal2_set_storage)
         .unwrap();
 
-    let host_value_transferred = Func::wrap(&mut store, value_transferred);
+    let hfn_seal0_value_transferred = Func::wrap(
+        &mut store,
+        |mut ctx: Caller<'_, HostState>,
+         out_ptr: u32,
+         out_len_ptr: u32|
+         -> Result<(), Trap> {
+            println!(
+                "HOSTFN:: value_transferred(out_ptr: 0x{:x}, out_len_ptr: 0x{:x})",
+                out_ptr, out_len_ptr
+            );
+
+            let (memory, state) = ctx
+                .data()
+                .memory
+                .expect("No memory")
+                .data_and_store_mut(&mut ctx);
+
+            state.seal0_value_transferred(memory, out_ptr, out_len_ptr)
+        }
+    );
+
     linker
-        .define("seal0", "value_transferred", host_value_transferred)
+        .define("seal0", "value_transferred", hfn_seal0_value_transferred)
         .unwrap();
 
     // TODO: make a macro! that generates the next 2 lines by something like this...

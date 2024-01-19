@@ -69,6 +69,13 @@ pub trait HostFunctions {
         value_ptr: u32,
         value_len: u32,
     ) -> Result<u32, Trap>;
+
+    fn seal0_value_transferred(
+        &mut self,
+        memory: &mut [u8],
+        out_ptr: u32,
+        out_len_ptr: u32,
+    ) -> Result<(), Trap>;
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +224,29 @@ impl HostFunctions for HostState {
         self.storage.insert(key.into(), value.into());
 
         Ok(0)
+    }
+
+    /// Stores the value transferred along with this call/instantiate into the supplied
+    /// buffer.
+    ///
+    /// The value is stored to linear memory at the address pointed to by `out_ptr`.
+    /// `out_len_ptr` must point to a `u32` value that describes the available space at
+    /// `out_ptr`. This call overwrites it with the size of the value. If the available
+    /// space at `out_ptr` is less than the size of the value a trap is triggered.
+    ///
+    /// The data is encoded as `T::Balance`.
+    fn seal0_value_transferred(
+        &mut self,
+        memory: &mut [u8],
+        out_ptr: u32,
+        out_len_ptr: u32,
+    ) -> Result<(), Trap> {
+        self.encode_to_memory_bounded(
+            memory,
+            out_ptr,
+            out_len_ptr,
+            self.value_transferred,
+        )
     }
 }
 #[cfg(test)]
