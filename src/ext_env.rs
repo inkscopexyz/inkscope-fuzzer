@@ -53,6 +53,24 @@ impl LoadedModule {
     }
 }
 
+pub trait HostFunctions {
+    fn seal0_input(
+        &mut self,
+        memory: &mut [u8],
+        buf_ptr: u32,
+        buf_len_ptr: u32,
+    ) -> Result<(), Trap>;
+
+    fn seal2_set_storage(
+        &mut self,
+        memory: &[u8],
+        key_ptr: u32,
+        key_len: u32,
+        value_ptr: u32,
+        value_len: u32,
+    ) -> Result<u32, Trap>;
+}
+
 #[derive(Debug, Clone)]
 pub struct HostState {
     pub storage: HashMap<Vec<u8>, Vec<u8>>,
@@ -70,6 +88,7 @@ impl HostState {
         &self.input_buffer
     }
 
+    #[allow(dead_code)]
     pub fn set_input(&mut self, input: Vec<u8>) {
         self.input_buffer = input;
     }
@@ -152,27 +171,14 @@ impl HostState {
         Ok(bound_checked)
     }
 
-    pub fn set_storage(
-        &mut self,
-        memory: &[u8],
-        key_ptr: u32,
-        key_len: u32,
-        value_ptr: u32,
-        value_len: u32,
-    ) -> Result<u32, Trap> {
-        let key = self.read_from_memory(memory, key_ptr, key_len)?;
-        let value = self.read_from_memory(memory, value_ptr, value_len)?;
-        self.storage.insert(key.into(), value.into());
-
-        Ok(0)
-    }
-
     pub fn set_return_data(&mut self, return_data: &[u8]) {
         self.return_data = Some(return_data.into());
     }
+}
 
+impl HostFunctions for HostState {
     /// Stores the input passed by the caller into the supplied buffer.
-    pub fn seal0_input(
+    fn seal0_input(
         &mut self,
         memory: &mut [u8],
         buf_ptr: u32,
@@ -196,8 +202,23 @@ impl HostState {
         self.encode_to_memory(memory, buf_len_ptr, input_len)?;
         Ok(())
     }
-}
 
+    /// Set the value at the given key in the contract storage.
+    fn seal2_set_storage(
+        &mut self,
+        memory: &[u8],
+        key_ptr: u32,
+        key_len: u32,
+        value_ptr: u32,
+        value_len: u32,
+    ) -> Result<u32, Trap> {
+        let key = self.read_from_memory(memory, key_ptr, key_len)?;
+        let value = self.read_from_memory(memory, value_ptr, value_len)?;
+        self.storage.insert(key.into(), value.into());
+
+        Ok(0)
+    }
+}
 #[cfg(test)]
 mod test {
     use super::*;

@@ -14,25 +14,6 @@ use cli::{
     Args,
 };
 
-/// Set the value at the given key in the contract storage.
-fn host_set_storage(
-    mut ctx: Caller<'_, HostState>,
-    key_ptr: u32,
-    key_len: u32,
-    value_ptr: u32,
-    value_len: u32,
-) -> Result<u32, Trap> {
-    // TODO: this needs to be a true logging facility
-    println!("HOSTFN:: set_storage(key_ptr: 0x{:x}, key_len: 0x{:x}, value_ptr: 0x{:x}, value_len: 0x{:x})", key_ptr, key_len, value_ptr, value_len);
-    let (memory, state) = ctx
-        .data()
-        .memory
-        .expect("No memory")
-        .data_and_store_mut(&mut ctx);
-
-    state.set_storage(memory, key_ptr, key_len, value_ptr, value_len)
-}
-
 /// Cease contract execution and save a data buffer as a result of the execution.
 ///
 /// This function never returns as it stops execution of the caller.
@@ -141,9 +122,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .define("seal1", "get_storage", host_get_storage)
         .unwrap();
 
-    let host_set_storage = Func::wrap(&mut store, host_set_storage);
+    let hfn_seal2_set_storage = Func::wrap(
+        &mut store,
+        |mut ctx: Caller<'_, HostState>,
+         key_ptr: u32,
+         key_len: u32,
+         value_ptr: u32,
+         value_len: u32|
+         -> Result<(), Trap> {
+            // TODO: this needs to be a true logging facility
+            println!(
+                "HOSTFN:: set_storage(key_ptr: 0x{:x}, key_len: 0x{:x}, value_ptr: 0x{:x}, value_len: 0x{:x})",
+                key_ptr, key_len, value_ptr, value_len
+            
+            );
+            let (memory, state) = ctx
+                .data()
+                .memory
+                .expect("No memory")
+                .data_and_store_mut(&mut ctx);
+
+            state.seal2_set_storage(memory, key_ptr, key_len, value_ptr, value_len).map(|_| ())
+        },
+    );
+    
     linker
-        .define("seal2", "set_storage", host_set_storage)
+        .define("seal2", "set_storage", hfn_seal2_set_storage)
         .unwrap();
 
     let host_value_transferred = Func::wrap(&mut store, value_transferred);
@@ -153,7 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // TODO: make a macro! that generates the next 2 lines by something like this...
     // link_host_function!(state.seal0_input)
-    let host_function = Func::wrap(
+    let hfn_seal0_input = Func::wrap(
         &mut store,
         |mut ctx: Caller<'_, HostState>,
          buf_ptr: u32,
@@ -173,7 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.seal0_input(memory, buf_ptr, buf_len_ptr)
         },
     );
-    linker.define("seal0", "input", host_function).unwrap();
+    linker.define("seal0", "input", hfn_seal0_input).unwrap();
 
     // host_function_macro!(host_state::HostState::seal0_function);
 
