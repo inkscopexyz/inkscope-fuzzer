@@ -76,6 +76,14 @@ pub trait HostFunctions {
         out_ptr: u32,
         out_len_ptr: u32,
     ) -> Result<(), Trap>;
+
+    fn seal0_seal_return(
+        &mut self,
+        memory: &mut [u8],
+        flags: u32,
+        data_ptr: u32,
+        data_len: u32,
+    ) -> Result<(), Trap>;
 }
 
 #[derive(Debug, Clone)]
@@ -247,6 +255,35 @@ impl HostFunctions for HostState {
             out_len_ptr,
             self.value_transferred,
         )
+    }
+
+    /// Cease contract execution and save a data buffer as a result of the execution.
+    ///
+    /// This function never returns as it stops execution of the caller.
+    /// This is the only way to return a data buffer to the caller. Returning from
+    /// execution without calling this function is equivalent to calling:
+    /// ```nocompile
+    /// seal_return(0, 0, 0);
+    /// ```
+    ///
+    /// The flags argument is a bitfield that can be used to signal special return
+    /// conditions to the supervisor:
+    /// --- lsb ---
+    /// bit 0      : REVERT - Revert all storage changes made by the caller.
+    /// bit [1, 31]: Reserved for future use.
+    /// --- msb ---
+    ///
+    /// Using a reserved bit triggers a trap.
+    fn seal0_seal_return(
+        &mut self,
+        memory: &mut [u8],
+        flags: u32,
+        data_ptr: u32,
+        data_len: u32,
+    ) -> Result<(), Trap> {
+        let return_data = self.read_from_memory(memory, data_ptr, data_len)?;
+        self.set_return_data(return_data);
+        Err(Trap::i32_exit(flags as i32))
     }
 }
 #[cfg(test)]

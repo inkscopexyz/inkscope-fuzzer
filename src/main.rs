@@ -14,43 +14,6 @@ use cli::{
     Args,
 };
 
-/// Cease contract execution and save a data buffer as a result of the execution.
-///
-/// This function never returns as it stops execution of the caller.
-/// This is the only way to return a data buffer to the caller. Returning from
-/// execution without calling this function is equivalent to calling:
-/// ```nocompile
-/// seal_return(0, 0, 0);
-/// ```
-///
-/// The flags argument is a bitfield that can be used to signal special return
-/// conditions to the supervisor:
-/// --- lsb ---
-/// bit 0      : REVERT - Revert all storage changes made by the caller.
-/// bit [1, 31]: Reserved for future use.
-/// --- msb ---
-///
-/// Using a reserved bit triggers a trap.
-fn host_seal_return(
-    mut ctx: Caller<'_, HostState>,
-    flags: i32,
-    data_ptr: u32,
-    data_len: u32,
-) -> Result<(), Trap> {
-    println!(
-        "HOSTFN:: seal_return(flags: 0x{:x}, data_ptr: 0x{:x}, data_len: 0x{:x})",
-        flags, data_ptr, data_len
-    );
-    let (memory, state) = ctx
-        .data()
-        .memory
-        .expect("No memory")
-        .data_and_store_mut(&mut ctx);
-    let return_data = state.read_from_memory(memory, data_ptr, data_len)?;
-    state.set_return_data(return_data);
-    Err(Trap::i32_exit(flags))
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let wat = get_wat(args)?;
@@ -102,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          key_len: u32,
          value_ptr: u32,
          value_len: u32|
-         -> Result<(), Trap> {
+         -> Result<u32, Trap> {
             // TODO: this needs to be a true logging facility
             println!(
                 "HOSTFN:: set_storage(key_ptr: 0x{:x}, key_len: 0x{:x}, value_ptr: 0x{:x}, value_len: 0x{:x})",
@@ -115,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("No memory")
                 .data_and_store_mut(&mut ctx);
 
-            state.seal2_set_storage(memory, key_ptr, key_len, value_ptr, value_len).map(|_| ())
+            state.seal2_set_storage(memory, key_ptr, key_len, value_ptr, value_len)
         },
     );
     
@@ -172,12 +135,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     linker.define("seal0", "input", hfn_seal0_input).unwrap();
 
-    // host_function_macro!(host_state::HostState::seal0_function);
+    let hfn_seal0_seal_return = Func::wrap(
+        &mut store,
+        |mut ctx: Caller<'_, HostState>,
+         flags: u32,
+         out_ptr: u32,
+         out_len: u32|
+         -> Result<(), Trap> {
 
-    let host_seal_return = Func::wrap(&mut store, host_seal_return);
-    linker
-        .define("seal0", "seal_return", host_seal_return)
-        .unwrap();
+            println!(
+                "HOSTFN:: seal_return(flags: 0x{:x}, out_ptr: 0x{:x}, out_len: 0x{:x})",
+                flags, out_ptr, out_len
+            );
+
+            let (memory, state) = ctx
+                .data()
+                .memory
+                .expect("No memory")
+                .data_and_store_mut(&mut ctx);
+
+            state.seal0_seal_return(memory, flags, out_ptr, out_len)
+
+        },);
+
+        linker.define("seal0", "seal_return", hfn_seal0_seal_return).unwrap();
 
     linker
         .define("env", "memory", memory)
