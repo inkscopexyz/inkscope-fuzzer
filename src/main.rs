@@ -1,9 +1,10 @@
 mod cli;
-mod ext_env;
+mod module;
+mod wasm;
+mod utils;
 
 use clap::Parser;
-use ext_env::*;
-use std::collections::HashMap;
+use module::LoadedModule;
 use wasmi::{
     core::Trap,
     *,
@@ -13,6 +14,9 @@ use cli::{
     get_wat,
     Args,
 };
+
+use wasm::host_state::HostState;
+use wasm::host_functions::HostFunctions;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -24,14 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let determinism = true;
     let contract = LoadedModule::new(&wasm, determinism, None).unwrap();
 
-    let host_state = HostState {
-        storage: HashMap::new(),
-        input_buffer: vec![0xed, 0x4b, 0x9d, 0x1b],
-        caller: [0; 32],
-        value_transferred: 0,
-        memory: None,
-        return_data: None,
-    };
+    let host_state = HostState::builder().input_buffer(vec![0xed, 0x4b, 0x9d, 0x1b]).build();
+
     let mut store = Store::new(&contract.engine, host_state);
     let mut linker = Linker::new(&contract.engine);
     let memory =

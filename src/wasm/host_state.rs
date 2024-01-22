@@ -1,97 +1,30 @@
+use std::collections::HashMap;
+
+use wasmi::{
+    core::Trap,
+    Memory,
+};
+
 use parity_scale_codec::{
     Decode,
     DecodeLimit,
     Encode,
     MaxEncodedLen,
 };
-use std::collections::HashMap;
-use wasmi::{
-    core::Trap,
-    *,
+
+use crate::utils::types::{
+    AccountId,
+    Balance,
 };
 
-pub struct LoadedModule {
-    pub module: Module,
-    pub engine: Engine,
-}
+use crate::wasm::host_functions::HostFunctions;
 
-impl LoadedModule {
-    /// Creates a new instance of `LoadedModule`.
-    pub fn new(
-        code: &[u8],
-        determinism: bool,
-        stack_limits: Option<StackLimits>,
-    ) -> Result<Self, &'static str> {
-        // NOTE: wasmi does not support unstable WebAssembly features. The module is
-        // implicitly checked for not having those ones when creating
-        // `wasmi::Module` below.
-        let mut config = Config::default();
-        config
-            .wasm_multi_value(false)
-            .wasm_mutable_global(false)
-            .wasm_sign_extension(true)
-            .wasm_bulk_memory(false)
-            .wasm_reference_types(false)
-            .wasm_tail_call(false)
-            .wasm_extended_const(false)
-            .wasm_saturating_float_to_int(false)
-            .floats(!determinism)
-            .consume_fuel(false)
-            .fuel_consumption_mode(FuelConsumptionMode::Eager);
-
-        if let Some(stack_limits) = stack_limits {
-            config.set_stack_limits(stack_limits);
-        }
-
-        let engine = Engine::new(&config);
-        let module = Module::new(&engine, code)
-            .map_err(|_| "Can't load the module into wasmi!")?;
-
-        // Return a `LoadedModule` instance with
-        // __valid__ module.
-        Ok(LoadedModule { module, engine })
-    }
-}
-
-pub trait HostFunctions {
-    fn seal0_input(
-        &mut self,
-        memory: &mut [u8],
-        buf_ptr: u32,
-        buf_len_ptr: u32,
-    ) -> Result<(), Trap>;
-
-    fn seal2_set_storage(
-        &mut self,
-        memory: &[u8],
-        key_ptr: u32,
-        key_len: u32,
-        value_ptr: u32,
-        value_len: u32,
-    ) -> Result<u32, Trap>;
-
-    fn seal0_value_transferred(
-        &mut self,
-        memory: &mut [u8],
-        out_ptr: u32,
-        out_len_ptr: u32,
-    ) -> Result<(), Trap>;
-
-    fn seal0_seal_return(
-        &mut self,
-        memory: &mut [u8],
-        flags: u32,
-        data_ptr: u32,
-        data_len: u32,
-    ) -> Result<(), Trap>;
-}
-
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct HostState {
     pub storage: HashMap<Vec<u8>, Vec<u8>>,
     pub input_buffer: Vec<u8>,
-    pub caller: [u8; 32],
-    pub value_transferred: u128,
+    pub caller: AccountId,
+    pub value_transferred: Balance,
     pub memory: Option<Memory>,
     pub return_data: Option<Vec<u8>>,
 }
@@ -99,6 +32,10 @@ pub struct HostState {
 const MAX_DECODE_NESTING: u32 = 256;
 
 impl HostState {
+    pub fn builder() -> HostStateBuilder {
+        HostStateBuilder::default()
+    }
+
     pub fn get_input(&self) -> &[u8] {
         &self.input_buffer
     }
@@ -286,6 +223,66 @@ impl HostFunctions for HostState {
         Err(Trap::i32_exit(flags as i32))
     }
 }
+
+#[derive(Default)]
+pub struct HostStateBuilder {
+    storage: HashMap<Vec<u8>, Vec<u8>>,
+    input_buffer: Vec<u8>,
+    caller: AccountId,
+    value_transferred: Balance,
+    memory: Option<Memory>,
+    return_data: Option<Vec<u8>>,
+}
+
+impl HostStateBuilder {
+    #[allow(dead_code)]
+    pub fn storage(mut self, storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn input_buffer(mut self, input_buffer: Vec<u8>) -> Self {
+        self.input_buffer = input_buffer;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn caller(mut self, caller: AccountId) -> Self {
+        self.caller = caller;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn value_transferred(mut self, value_transferred: Balance) -> Self {
+        self.value_transferred = value_transferred;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn memory(mut self, memory: Option<Memory>) -> Self {
+        self.memory = memory;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn return_data(mut self, return_data: Option<Vec<u8>>) -> Self {
+        self.return_data = return_data;
+        self
+    }
+
+    pub fn build(self) -> HostState {
+        HostState {
+            storage: self.storage,
+            input_buffer: self.input_buffer,
+            caller: self.caller,
+            value_transferred: self.value_transferred,
+            memory: self.memory,
+            return_data: self.return_data,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
