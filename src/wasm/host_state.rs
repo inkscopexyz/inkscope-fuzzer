@@ -1,64 +1,30 @@
+use std::collections::HashMap;
+
+use wasmi::{
+    core::Trap,
+    Memory,
+};
+
 use parity_scale_codec::{
     Decode,
     DecodeLimit,
     Encode,
     MaxEncodedLen,
 };
-use std::collections::HashMap;
-use wasmi::{
-    core::Trap,
-    *,
+
+use crate::utils::types::{
+    AccountId,
+    Balance,
 };
 
-pub struct LoadedModule {
-    pub module: Module,
-    pub engine: Engine,
-}
+use crate::wasm::host_functions::HostFunctions;
 
-impl LoadedModule {
-    /// Creates a new instance of `LoadedModule`.
-    pub fn new(
-        code: &[u8],
-        determinism: bool,
-        stack_limits: Option<StackLimits>,
-    ) -> Result<Self, &'static str> {
-        // NOTE: wasmi does not support unstable WebAssembly features. The module is
-        // implicitly checked for not having those ones when creating
-        // `wasmi::Module` below.
-        let mut config = Config::default();
-        config
-            .wasm_multi_value(false)
-            .wasm_mutable_global(false)
-            .wasm_sign_extension(true)
-            .wasm_bulk_memory(false)
-            .wasm_reference_types(false)
-            .wasm_tail_call(false)
-            .wasm_extended_const(false)
-            .wasm_saturating_float_to_int(false)
-            .floats(!determinism)
-            .consume_fuel(false)
-            .fuel_consumption_mode(FuelConsumptionMode::Eager);
-
-        if let Some(stack_limits) = stack_limits {
-            config.set_stack_limits(stack_limits);
-        }
-
-        let engine = Engine::new(&config);
-        let module = Module::new(&engine, code)
-            .map_err(|_| "Can't load the module into wasmi!")?;
-
-        // Return a `LoadedModule` instance with
-        // __valid__ module.
-        Ok(LoadedModule { module, engine })
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct HostState {
     pub storage: HashMap<Vec<u8>, Vec<u8>>,
     pub input_buffer: Vec<u8>,
-    pub caller: [u8; 32],
-    pub value_transferred: u128,
+    pub caller: AccountId,
+    pub value_transferred: Balance,
     pub memory: Option<Memory>,
     pub return_data: Option<Vec<u8>>,
 }
@@ -66,10 +32,15 @@ pub struct HostState {
 const MAX_DECODE_NESTING: u32 = 256;
 
 impl HostState {
+    pub fn builder() -> HostStateBuilder {
+        HostStateBuilder::default()
+    }
+
     pub fn get_input(&self) -> &[u8] {
         &self.input_buffer
     }
 
+    #[allow(dead_code)]
     pub fn set_input(&mut self, input: Vec<u8>) {
         self.input_buffer = input;
     }
@@ -152,27 +123,14 @@ impl HostState {
         Ok(bound_checked)
     }
 
-    pub fn set_storage(
-        &mut self,
-        memory: &[u8],
-        key_ptr: u32,
-        key_len: u32,
-        value_ptr: u32,
-        value_len: u32,
-    ) -> Result<u32, Trap> {
-        let key = self.read_from_memory(memory, key_ptr, key_len)?;
-        let value = self.read_from_memory(memory, value_ptr, value_len)?;
-        self.storage.insert(key.into(), value.into());
-
-        Ok(0)
-    }
-
     pub fn set_return_data(&mut self, return_data: &[u8]) {
         self.return_data = Some(return_data.into());
     }
+}
 
+impl HostFunctions for HostState {
     /// Stores the input passed by the caller into the supplied buffer.
-    pub fn seal0_input(
+    fn seal0_input(
         &mut self,
         memory: &mut [u8],
         buf_ptr: u32,
@@ -195,6 +153,133 @@ impl HostState {
         self.write_to_memory(memory, buf_ptr, input)?;
         self.encode_to_memory(memory, buf_len_ptr, input_len)?;
         Ok(())
+    }
+
+    /// Set the value at the given key in the contract storage.
+    fn seal2_set_storage(
+        &mut self,
+        memory: &[u8],
+        key_ptr: u32,
+        key_len: u32,
+        value_ptr: u32,
+        value_len: u32,
+    ) -> Result<u32, Trap> {
+        let key = self.read_from_memory(memory, key_ptr, key_len)?;
+        let value = self.read_from_memory(memory, value_ptr, value_len)?;
+        self.storage.insert(key.into(), value.into());
+
+        Ok(0)
+    }
+
+    /// Stores the value transferred along with this call/instantiate into the supplied
+    /// buffer.
+    ///
+    /// The value is stored to linear memory at the address pointed to by `out_ptr`.
+    /// `out_len_ptr` must point to a `u32` value that describes the available space at
+    /// `out_ptr`. This call overwrites it with the size of the value. If the available
+    /// space at `out_ptr` is less than the size of the value a trap is triggered.
+    ///
+    /// The data is encoded as `T::Balance`.
+    fn seal0_value_transferred(
+        &mut self,
+        memory: &mut [u8],
+        out_ptr: u32,
+        out_len_ptr: u32,
+    ) -> Result<(), Trap> {
+        self.encode_to_memory_bounded(
+            memory,
+            out_ptr,
+            out_len_ptr,
+            self.value_transferred,
+        )
+    }
+
+    /// Cease contract execution and save a data buffer as a result of the execution.
+    ///
+    /// This function never returns as it stops execution of the caller.
+    /// This is the only way to return a data buffer to the caller. Returning from
+    /// execution without calling this function is equivalent to calling:
+    /// ```nocompile
+    /// seal_return(0, 0, 0);
+    /// ```
+    ///
+    /// The flags argument is a bitfield that can be used to signal special return
+    /// conditions to the supervisor:
+    /// --- lsb ---
+    /// bit 0      : REVERT - Revert all storage changes made by the caller.
+    /// bit [1, 31]: Reserved for future use.
+    /// --- msb ---
+    ///
+    /// Using a reserved bit triggers a trap.
+    fn seal0_seal_return(
+        &mut self,
+        memory: &mut [u8],
+        flags: u32,
+        data_ptr: u32,
+        data_len: u32,
+    ) -> Result<(), Trap> {
+        let return_data = self.read_from_memory(memory, data_ptr, data_len)?;
+        self.set_return_data(return_data);
+        Err(Trap::i32_exit(flags as i32))
+    }
+}
+
+#[derive(Default)]
+pub struct HostStateBuilder {
+    storage: HashMap<Vec<u8>, Vec<u8>>,
+    input_buffer: Vec<u8>,
+    caller: AccountId,
+    value_transferred: Balance,
+    memory: Option<Memory>,
+    return_data: Option<Vec<u8>>,
+}
+
+impl HostStateBuilder {
+    #[allow(dead_code)]
+    pub fn storage(mut self, storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn input_buffer(mut self, input_buffer: Vec<u8>) -> Self {
+        self.input_buffer = input_buffer;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn caller(mut self, caller: AccountId) -> Self {
+        self.caller = caller;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn value_transferred(mut self, value_transferred: Balance) -> Self {
+        self.value_transferred = value_transferred;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn memory(mut self, memory: Option<Memory>) -> Self {
+        self.memory = memory;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn return_data(mut self, return_data: Option<Vec<u8>>) -> Self {
+        self.return_data = return_data;
+        self
+    }
+
+    pub fn build(self) -> HostState {
+        HostState {
+            storage: self.storage,
+            input_buffer: self.input_buffer,
+            caller: self.caller,
+            value_transferred: self.value_transferred,
+            memory: self.memory,
+            return_data: self.return_data,
+        }
     }
 }
 
@@ -310,7 +395,7 @@ mod test {
                 Ok(_) => panic!("Should have failed"),
                 Err(e) => {
                     println!("e: {:?}", e);
-                    assert!(e.to_string().contains("Pointer out of bound reading at 0"))
+                    assert!(e.to_string().contains("Pointer out of bound writing at"))
                 }
             }
         }
