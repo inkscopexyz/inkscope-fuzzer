@@ -3,17 +3,5 @@ name = "runtime-fuzzer"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-parity-scale-codec = { version = "3.6.9", features = ["max-encoded-len"] }
-wasmi = "0.31.1"
-wat = "1.0.82"
-clap = { version = "4.4.11", features = ["derive"] }
-env_logger = "0.10.1"
-serde_json = "1.0.108"
-wabt = "0.10.0"
-
-[dev-dependencies]
-assert_cmd = "2.0.12"
-predicates = "3.0.4"
+drink = "0.10.0"
