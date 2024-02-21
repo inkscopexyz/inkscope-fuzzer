@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 drink = "0.10.0"
+fastrand = "2.0.1"
+log = "0.4.20"
