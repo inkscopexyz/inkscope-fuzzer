@@ -6,4 +6,7 @@ edition = "2021"
 [dependencies]
 drink = "0.10.0"
 fastrand = "2.0.1"
+hex = "0.4.3"
 log = "0.4.20"
+scale-info = "2.10.0"
+
