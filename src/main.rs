@@ -1,10 +1,15 @@
 use anyhow::Result;
 use drink::{
-    frame_support::{pallet_prelude::Encode, sp_runtime::traits::UniqueSaturatedInto},
+    frame_support::{
+        pallet_prelude::Encode,
+        sp_runtime::traits::{Bounded, UniqueSaturatedInto},
+        weights::constants::WEIGHT_PROOF_SIZE_PER_KB,
+    },
     frame_system::offchain::{Account, SendSignedTransaction},
+    pallet_contracts::Determinism,
     runtime::{AccountIdFor, HashFor, MinimalRuntime},
     session::{Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
-    BalanceOf, ContractBundle,
+    BalanceOf, ContractBundle, Weight,
 };
 use fastrand::Rng;
 use hex;
@@ -37,7 +42,7 @@ struct RuntimeFuzzer {
     contract: ContractBundle,
     cache: HashMap<TraceHash, SessionBackup>,
     //Settings
-    potential_callers: Vec<AccountId>,
+    pub potential_callers: Vec<AccountId>,
     ignore_pure_messages: bool,
     max_sequence_size: usize,
 }
@@ -432,9 +437,9 @@ fn hash_trace(trace: &FuzzerTrace) -> u64 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fuzzer =
         RuntimeFuzzer::new(PathBuf::from("./flipper/target/ink/flipper.contract"));
-    println!("Generated constructor {:?}", fuzzer.generate_constructor());
-    println!("Generated message {:?}", fuzzer.generate_message());
-    return Ok(());
+    //println!("Generated constructor {:?}", fuzzer.generate_constructor());
+    //println!("Generated message {:?}", fuzzer.generate_message());
+    //return Ok(());
 
     // TODO! use a command line argument parsing lib. Check what ink/drink ppl uses
     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
@@ -443,27 +448,81 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let transcoder = contract.transcoder;
     let metadata = transcoder.metadata();
-    println!("type of metadata: {:?}", metadata);
+    //println!("type of metadata: {:?}", metadata);
     let constructors = metadata.spec().constructors();
 
-    for constructor in constructors {
-        println!("Constructor: {:?}", constructor);
-    }
+    // for constructor in constructors {
+    //     println!("Constructor: {:?}", constructor);
+    // }
 
     let messages = metadata.spec().messages();
-    for message in messages {
-        println!("Message: {:?}", message);
-    }
+    // for message in messages {
+    //     println!("Message: {:?}", message);
+    // }
 
     let mut rng = Rng::new();
 
     let mut session = Session::<MinimalRuntime>::new()?;
-    let account = session.get_actor();
 
-    let selected_constructor_spec = rng.choice(constructors).expect("No constructors");
-    println!("Selected constructor: {:?}", selected_constructor_spec);
+    for caller in &fuzzer.potential_callers {
+        let caller_balance = session.sandbox().free_balance(caller);
+        println!("Caller balance before: {:?}", caller_balance);
+        println!("Minting to caller: {:?}", caller);
+        let res = session
+            .sandbox()
+            .mint_into(caller.to_owned(), Balance::max_value() / 1000);
+        println!("Minting result: {:?}", res);
+        let caller_balance = session.sandbox().free_balance(caller);
+        println!("Caller balance after: {:?}", caller_balance);
+        println!("\n");
+    }
 
-    return Ok(());
+    let gas_limit = Weight::max_value() / 4;
+    let constructor = fuzzer.generate_constructor();
+
+    let balance_caller = session.sandbox().free_balance(&constructor.caller);
+    println!("Caller balance: {:?}", balance_caller);
+    println!("Caller address {:?}", constructor.caller);
+    let contract_deploy = session.sandbox().deploy_contract(
+        constructor.bytecode,
+        0,
+        constructor.input,
+        constructor.salt,
+        constructor.caller,
+        gas_limit,
+        Some(Balance::max_value() / 100000),
+    );
+
+    println!("Contract deploy: {:?}", contract_deploy);
+    let deployment_address = contract_deploy.result.unwrap().account_id;
+
+    // for i in  {
+    //     let call = fuzzer.generate_message();
+    // }
+    let iterations = rng.u8(..10);
+    println!("\n");
+    println!("Iterations: {:?}", iterations);
+    println!("\n");
+
+    for i in 1..iterations {
+        let message = fuzzer.generate_message();
+
+        let caller_balance = session.sandbox().free_balance(&message.caller);
+        println!("Caller {i} balance: {:?}", caller_balance);
+        let result = session.sandbox().call_contract(
+            deployment_address.clone(),
+            message.endowment,
+            message.input,
+            message.caller,
+            Weight::max_value(),
+            Some(Balance::max_value() / 100000),
+            Determinism::Enforced,
+        );
+        println!("Message result {i}: {:?}", result);
+        println!("\n");
+    }
+
+    Ok(())
 
     //session.deploy_bundle(       , "new", &["true"], NO_SALT, NO_ENDOWMENT)?;
 
