@@ -10,10 +10,11 @@ use drink::{
     runtime::{AccountIdFor, HashFor, MinimalRuntime},
     session::{Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
     BalanceOf, ContractBundle, Weight,
+    sandbox::Snapshot,
 };
 use fastrand::Rng;
 use hex;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use parity_scale_codec::Compact as ScaleCompact;
 use rayon::prelude::*;
 use scale_info::{
@@ -35,12 +36,11 @@ type Balance = BalanceOf<MinimalRuntime>;
 type AccountId = AccountIdFor<MinimalRuntime>;
 type Hash = HashFor<MinimalRuntime>;
 
-type SessionBackup = Vec<u8>;
 struct RuntimeFuzzer {
     rng: RefCell<Rng>,
     contract_path: PathBuf,
     contract: ContractBundle,
-    cache: HashMap<TraceHash, SessionBackup>,
+    cache: HashMap<TraceHash, Snapshot>,
     //Settings
     pub potential_callers: Vec<AccountId>,
     ignore_pure_messages: bool,
@@ -340,7 +340,7 @@ impl RuntimeFuzzer {
         encoded.append(&mut encoded_args);
 
         FuzzerDeploy {
-            caller: self.fuzz_caller(),
+            caller: self.generate_caller(),
             endowment: Default::default(),
             bytecode: self.contract.wasm.clone(),
             input: encoded,
@@ -377,7 +377,7 @@ impl RuntimeFuzzer {
         encoded.append(&mut encoded_args);
 
         FuzzerMessage {
-            caller: self.fuzz_caller(),
+            caller: self.generate_caller(),
             callee: AccountId::from([0; 32]),
             endowment: Default::default(),
             input: encoded,
@@ -385,12 +385,73 @@ impl RuntimeFuzzer {
     }
 
     //This should generate a random account id from the set of potential callers
-    fn fuzz_caller(&self) -> AccountId {
+    fn generate_caller(&self) -> AccountId {
         match self.rng.borrow_mut().choice(&self.potential_callers) {
             Some(account) => account.clone(),
             None => AccountId::from([0; 32]),
         }
     }
+
+    // Ge the initial state from the cache
+    fn get_cached_state(&self, trace: &FuzzerTrace) -> (Option<&Snapshot>, usize) {
+        let hash = hash_trace(&trace);
+        for length in trace.len()..0 {
+            let subtrace:&[FuzzerCall] = &trace[0..length];
+            if let Some(result) = self.cache.get(&hash_trace(subtrace)){
+                return (Some(result),  length);
+            };
+        }
+        return (None, 0);
+    }
+
+    fn run_trace(&mut self, trace: &FuzzerTrace) -> Result<()> {
+        let mut session = Session::<MinimalRuntime>::new()?;
+        let (starting_state, offset) = self.get_cached_state(trace);
+        //session.restore(starting_point);
+        for (pos, call) in trace.iter().enumerate().skip(offset) {
+            let result_ok = match call {
+                FuzzerCall::Deploy(deploy) => {
+                    session.deploy_contract(
+                        deploy.caller,
+                        deploy.endowment,
+                        deploy.bytecode.clone(),
+                        deploy.input.clone(),
+                        deploy.salt.clone(),
+                    )?;
+                    todo!("Check if the deploiyment was successful and set the address somwhere");
+                    true
+                }
+                FuzzerCall::Message(message) => {
+                    session.call_contract(
+                        message.caller,
+                        message.callee,
+                        message.endowment,
+                        message.input.clone(),
+                    )?;
+                    todo!("Check if the message was successful");
+                    true
+                }
+            };
+
+            //Take a snapshot after every successful message dump others
+            if result_ok {
+                let snapshot = session.sandbox().take_snapshot();
+                self.cache.insert(hash_trace(&trace[..=pos]), snapshot);
+                // There has been progress!
+                // Check all the properties in isolation using dry_run and log the result.
+                todo!("Check the properties");
+                //self.check_properties();
+            }else{
+                // bail out of the mainloop!
+                return Ok(());
+            }
+
+
+
+        }
+        Ok(())
+    }
+
 }
 
 #[derive(StdHash)]
@@ -428,7 +489,7 @@ struct FuzzerMessage {
 
 type FuzzerTrace = Vec<FuzzerCall>;
 type TraceHash = u64;
-fn hash_trace(trace: &FuzzerTrace) -> u64 {
+fn hash_trace(trace: &[FuzzerCall]) -> u64 {
     let mut hasher = DefaultHasher::new();
     trace.hash(&mut hasher);
     hasher.finish()
@@ -438,8 +499,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fuzzer =
         RuntimeFuzzer::new(PathBuf::from("./flipper/target/ink/flipper.contract"));
     //println!("Generated constructor {:?}", fuzzer.generate_constructor());
+    println!("Generated message {:?}", fuzzer.generate_message());
+    println!("Generated message {:?}", fuzzer.generate_message());
     //println!("Generated message {:?}", fuzzer.generate_message());
     //return Ok(());
+
+
 
     // TODO! use a command line argument parsing lib. Check what ink/drink ppl uses
     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
