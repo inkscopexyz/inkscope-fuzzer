@@ -8,9 +8,9 @@ use drink::{
     frame_system::offchain::{Account, SendSignedTransaction},
     pallet_contracts::Determinism,
     runtime::{AccountIdFor, HashFor, MinimalRuntime},
+    sandbox::Snapshot,
     session::{Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
     BalanceOf, ContractBundle, Weight,
-    sandbox::Snapshot,
 };
 
 use fastrand::Rng;
@@ -397,9 +397,9 @@ impl RuntimeFuzzer {
     fn get_cached_state(&self, trace: &FuzzerTrace) -> (Option<&Snapshot>, usize) {
         let hash = hash_trace(&trace);
         for length in trace.len()..0 {
-            let subtrace:&[FuzzerCall] = &trace[0..length];
-            if let Some(result) = self.cache.get(&hash_trace(subtrace)){
-                return (Some(result),  length);
+            let subtrace: &[FuzzerCall] = &trace[0..length];
+            if let Some(result) = self.cache.get(&hash_trace(subtrace)) {
+                return (Some(result), length);
             };
         }
         return (None, 0);
@@ -412,25 +412,38 @@ impl RuntimeFuzzer {
         for (pos, call) in trace.iter().enumerate().skip(offset) {
             let result_ok = match call {
                 FuzzerCall::Deploy(deploy) => {
-                    session.deploy_contract(
-                        deploy.caller,
-                        deploy.endowment,
-                        deploy.bytecode.clone(),
-                        deploy.input.clone(),
-                        deploy.salt.clone(),
-                    )?;
-                    todo!("Check if the deploiyment was successful and set the address somwhere");
-                    true
+                    session
+                        .sandbox()
+                        .deploy_contract(
+                            deploy.bytecode.clone(),
+                            deploy.endowment,
+                            deploy.input.clone(),
+                            deploy.salt.clone(),
+                            deploy.caller.clone(),
+                            Weight::max_value(),
+                            Some(Balance::max_value() / 100000),
+                        )
+                        .result
+                        .is_ok()
+                    //todo!("Check if the deploiyment was successful and set the address somwhere");
+                    //true
                 }
                 FuzzerCall::Message(message) => {
-                    session.call_contract(
-                        message.caller,
-                        message.callee,
-                        message.endowment,
-                        message.input.clone(),
-                    )?;
-                    todo!("Check if the message was successful");
-                    true
+                    session
+                        .sandbox()
+                        .call_contract(
+                            message.callee.clone(),
+                            message.endowment,
+                            message.input.clone(),
+                            message.caller.clone(),
+                            Weight::max_value(),
+                            Some(Balance::max_value() / 100000),
+                            Determinism::Enforced,
+                        )
+                        .result
+                        .is_ok()
+                    //todo!("Check if the message was successful");
+                    //true
                 }
             };
 
@@ -442,17 +455,13 @@ impl RuntimeFuzzer {
                 // Check all the properties in isolation using dry_run and log the result.
                 todo!("Check the properties");
                 //self.check_properties();
-            }else{
+            } else {
                 // bail out of the mainloop!
                 return Ok(());
             }
-
-
-
         }
         Ok(())
     }
-
 }
 
 #[derive(StdHash)]
@@ -504,8 +513,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Generated message {:?}", fuzzer.generate_message());
     //println!("Generated message {:?}", fuzzer.generate_message());
     //return Ok(());
-
-
 
     // TODO! use a command line argument parsing lib. Check what ink/drink ppl uses
     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
