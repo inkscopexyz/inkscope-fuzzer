@@ -12,6 +12,7 @@ use drink::{
     BalanceOf, ContractBundle, Weight,
     sandbox::Snapshot,
 };
+
 use fastrand::Rng;
 use hex;
 use log::{debug, error, info, trace};
@@ -633,7 +634,6 @@ fn maint() -> Result<(), Box<dyn std::error::Error>> {
 
 fn execute_main_logic() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::<MinimalRuntime>::new()?;
-
     // Load contract from file
     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
     let contract = ContractBundle::load(contract_path).expect("Failed to load contract");
