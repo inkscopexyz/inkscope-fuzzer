@@ -5,4 +5,10 @@ edition = "2021"
 
 [dependencies]
 drink = { git = "https://github.com/inkscopexyz/inkscope-drink.git", branch = "main" }
+fastrand = "2.0.1"
+hex = "0.4.3"
+log = "0.4.20"
 rayon = "1.8.1"
+anyhow = "1.0.80"
+parity-scale-codec = "3.6.9"
+scale-info = "2.10.0"
