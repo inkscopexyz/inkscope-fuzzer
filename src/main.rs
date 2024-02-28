@@ -1,41 +1,42 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+
 use drink::{
     frame_support::{
-        pallet_prelude::Encode,
-        sp_runtime::traits::{Bounded, UniqueSaturatedInto},
-        weights::constants::WEIGHT_PROOF_SIZE_PER_KB,
-    },
-    frame_system::offchain::{Account, SendSignedTransaction},
-    pallet_contracts::Determinism,
-    runtime::{AccountIdFor, HashFor, MinimalRuntime},
-    sandbox::Snapshot,
-    session::{Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
-    BalanceOf, ContractBundle, Weight,
+        pallet_prelude::{Encode, Decode}, print, sp_runtime::traits::{
+            BlakeTwo256, Bounded, SaturatedConversion, UniqueSaturatedInto, Hash as HashTrait, TrailingZeroInput
+        }, weights::constants::WEIGHT_PROOF_SIZE_PER_KB, Hashable
+    }, frame_system::{self, offchain::{Account, SendSignedTransaction}}, pallet_contracts::{
+        AddressGenerator, ContractExecResult, DefaultAddressGenerator, Determinism,
+    }, runtime::{
+        pallet_contracts_debugging::TracingExt, AccountIdFor, HashFor, MinimalRuntime,
+    }, sandbox::{self, Snapshot}, session::{self, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT}, BalanceOf, ContractBundle, DispatchError, SandboxConfig, Weight
 };
-
 use fastrand::Rng;
 use hex;
 use log::{debug, error, info, trace};
+use env_logger;
 use parity_scale_codec::Compact as ScaleCompact;
-use rayon::prelude::*;
+use rayon::{prelude::*, result};
 use scale_info::{
     form::PortableForm, IntoPortable, PortableType, TypeDef, TypeDefArray,
     TypeDefBitSequence, TypeDefCompact, TypeDefComposite, TypeDefPrimitive,
     TypeDefSequence, TypeDefTuple, TypeDefVariant,
 };
 use std::{
-    any::Any,
-    cell::RefCell,
-    collections::HashMap,
-    hash::{DefaultHasher, Hash as StdHash, Hasher},
-    path::{Path, PathBuf},
-    thread,
+    any::Any, cell::RefCell, collections::{HashMap, HashSet}, default, hash::{DefaultHasher, Hash as StdHash, Hasher}, path::{Path, PathBuf}, ptr::hash, thread
 };
+
+
+//TODO: add this to drink/runtime.rs
+pub type HashingFor<R> = <R as frame_system::Config>::Hashing;
 
 //This defines all the configurable types based on the current runtime: MinimalRuntime
 type Balance = BalanceOf<MinimalRuntime>;
 type AccountId = AccountIdFor<MinimalRuntime>;
 type Hash = HashFor<MinimalRuntime>;
+type CodeHash = HashFor<MinimalRuntime>;
+type Hashing = HashingFor<MinimalRuntime>;
+type TraceHash = u64;
 
 struct RuntimeFuzzer {
     rng: RefCell<Rng>,
@@ -43,23 +44,42 @@ struct RuntimeFuzzer {
     contract: ContractBundle,
     cache: HashMap<TraceHash, Snapshot>,
     //Settings
-    pub potential_callers: Vec<AccountId>,
+    budget: Balance,
+    accounts: Vec<AccountId>,
     ignore_pure_messages: bool,
-    max_sequence_size: usize,
+    max_sequence_type_size: u8,
+    max_number_of_transactions: usize,
 }
 
 impl RuntimeFuzzer {
     fn new(contract_path: PathBuf) -> Self {
-        let contract =
-            ContractBundle::load(&contract_path).expect("Failed to load contract");
+        //TODO! Do it right
+        // let default_callers: Vec<AccountId> = vec![
+        //     "Alice".into(),
+        //     "Bob".into(),
+        //     "Charlie".into(),
+        //     "Dave".into(),
+        //     "Eve".into(),
+        //     "Ferdinand".into(),
+        //     "Gina".into(),
+        //     "Hank".into(),
+        //     "Ivan".into(),
+        //     "Jenny".into(),
+        // ];
+
+        let default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
+
         Self {
             rng: RefCell::new(Rng::new()),
-            contract_path,
-            contract,
+            contract_path: contract_path.clone(),
+            contract: ContractBundle::load(&contract_path)
+                .expect("Failed to load contract"),
             cache: HashMap::new(),
-            potential_callers: (0xA0..0xAF).map(|i| AccountId::from([i; 32])).collect(),
+            budget: Balance::max_value() / 1000,
+            accounts: default_callers,
             ignore_pure_messages: true,
-            max_sequence_size: 100,
+            max_sequence_type_size: 100,
+            max_number_of_transactions: 50,
         }
     }
 
@@ -134,7 +154,10 @@ impl RuntimeFuzzer {
         sequence: &TypeDefSequence<PortableForm>,
     ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
-        let size = self.rng.borrow_mut().usize(0..self.max_sequence_size);
+        // Fuzz a sequece size and encode it in compact form
+        let size = self.rng.borrow_mut().u8(0..self.max_sequence_type_size);
+        ScaleCompact(size).encode_to(&mut encoded);
+
         let param_type_def = self.get_typedef(sequence.type_param.id)?;
         for i in 0..size {
             let mut param_encoded = self.generate_argument(param_type_def)?;
@@ -339,18 +362,19 @@ impl RuntimeFuzzer {
 
         let mut encoded_args = self.generate_arguments(selected_args_type_defs).unwrap();
         encoded.append(&mut encoded_args);
-
+        let caller = self.generate_caller();
+        let endowment = self.generate_endowment(&caller);
         FuzzerDeploy {
-            caller: self.generate_caller(),
-            endowment: Default::default(),
-            bytecode: self.contract.wasm.clone(),
-            input: encoded,
+            caller,
+            endowment,
+            contract_bytes: self.contract.wasm.clone(),
+            data: encoded,
             salt: Default::default(),
         }
     }
 
     // Generates a fuzzed message to be added in the trace
-    fn generate_message(&self) -> FuzzerMessage {
+    fn generate_message(&self, callee: AccountId) -> FuzzerMessage {
         let transcoder = &self.contract.transcoder;
         let metadata = transcoder.metadata();
 
@@ -367,7 +391,7 @@ impl RuntimeFuzzer {
         let selectec_args_spec = selected_message.args();
 
         let selector = selected_message.selector();
-        let mut encoded = selector.to_bytes().to_vec();
+        let mut input = selector.to_bytes().to_vec();
 
         let selected_args_type_defs = selectec_args_spec
             .iter()
@@ -375,93 +399,212 @@ impl RuntimeFuzzer {
             .collect();
 
         let mut encoded_args = self.generate_arguments(selected_args_type_defs).unwrap();
-        encoded.append(&mut encoded_args);
-
+        input.append(&mut encoded_args);
+        let caller = self.generate_caller();
+        let endowment = self.generate_endowment(&caller);
         FuzzerMessage {
-            caller: self.generate_caller(),
-            callee: AccountId::from([0; 32]),
-            endowment: Default::default(),
-            input: encoded,
+            caller,
+            callee,
+            endowment,
+            input,
         }
     }
 
     //This should generate a random account id from the set of potential callers
     fn generate_caller(&self) -> AccountId {
-        match self.rng.borrow_mut().choice(&self.potential_callers) {
-            Some(account) => account.clone(),
-            None => AccountId::from([0; 32]),
-        }
+        self.rng
+            .borrow_mut()
+            .choice(&self.accounts)
+            .expect("You need to configure some potential callers")
+            .clone()
+    }
+    fn generate_endowment(&self, _caller: &AccountId) -> Balance {
+        // TODO! This should be a sensible value related to the balance of the caller
+        let max_endowment: u128 = self.budget.saturated_into::<u128>();
+            self.rng.borrow_mut().u128(0..max_endowment) as Balance
     }
 
-    // Ge the initial state from the cache
-    fn get_cached_state(&self, trace: &FuzzerTrace) -> (Option<&Snapshot>, usize) {
-        let hash = hash_trace(&trace);
-        for length in trace.len()..0 {
-            let subtrace: &[FuzzerCall] = &trace[0..length];
-            if let Some(result) = self.cache.get(&hash_trace(subtrace)) {
-                return (Some(result), length);
-            };
-        }
-        return (None, 0);
-    }
-
-    fn run_trace(&mut self, trace: &FuzzerTrace) -> Result<()> {
-        let mut session = Session::<MinimalRuntime>::new()?;
-        let (starting_state, offset) = self.get_cached_state(trace);
-        //session.restore(starting_point);
-        for (pos, call) in trace.iter().enumerate().skip(offset) {
-            let result_ok = match call {
-                FuzzerCall::Deploy(deploy) => {
-                    session
-                        .sandbox()
-                        .deploy_contract(
-                            deploy.bytecode.clone(),
-                            deploy.endowment,
-                            deploy.input.clone(),
-                            deploy.salt.clone(),
-                            deploy.caller.clone(),
-                            Weight::max_value(),
-                            Some(Balance::max_value() / 100000),
-                        )
-                        .result
-                        .is_ok()
-                    //todo!("Check if the deploiyment was successful and set the address somwhere");
-                    //true
-                }
-                FuzzerCall::Message(message) => {
-                    session
-                        .sandbox()
-                        .call_contract(
-                            message.callee.clone(),
-                            message.endowment,
-                            message.input.clone(),
-                            message.caller.clone(),
-                            Weight::max_value(),
-                            Some(Balance::max_value() / 100000),
-                            Determinism::Enforced,
-                        )
-                        .result
-                        .is_ok()
-                    //todo!("Check if the message was successful");
-                    //true
-                }
-            };
-
-            //Take a snapshot after every successful message dump others
-            if result_ok {
-                let snapshot = session.sandbox().take_snapshot();
-                self.cache.insert(hash_trace(&trace[..=pos]), snapshot);
-                // There has been progress!
-                // Check all the properties in isolation using dry_run and log the result.
-                todo!("Check the properties");
-                //self.check_properties();
-            } else {
-                // bail out of the mainloop!
-                return Ok(());
-            }
+    fn initialize_state(
+        &self,
+        session: &mut Session<MinimalRuntime>,
+        _trace: &[FuzzerCall],
+    ) -> Result<()> {
+        debug!("Setting initial state. Give initial budget to caller addresses.");
+        // Assigning initial budget to caller addresses
+        let sandbox = session.sandbox();
+        for account in &self.accounts {
+            debug!("  Mint {} to {}", self.budget, account);
+            sandbox
+                .mint_into(account.clone(), self.budget)
+                .map_err(|e| anyhow::anyhow!("Error minting into account: {:?}", e))?;
         }
         Ok(())
     }
+
+    fn execute_call(
+        &self,
+        session: &mut Session<MinimalRuntime>,
+        calls: &[FuzzerCall],
+    ) -> Result<()> {
+        // TODO! We need to control this config value from s different place
+        let gas_limit = Weight::max_value() / 4;
+
+        let call = match calls.last() {
+            Some(call) => call,
+            None => anyhow::bail!("No calls to execute"),
+        };
+
+        let result = match call {
+            FuzzerCall::Message(message) => {
+                println!("Sending message with data {:?}", message);
+
+                session
+                    .sandbox()
+                    .call_contract(
+                        message.caller.clone(),
+                        message.endowment,
+                        message.input.clone(),
+                        message.caller.clone(),
+                        gas_limit,
+                        None,
+                        Determinism::Enforced,
+                    )
+                    .result
+                    .map_err(|e| anyhow::anyhow!("Error executing message: {:?}", e))?
+            }
+            FuzzerCall::Deploy(deploy) => {
+                info!("Deploying contract with data {:?}", deploy);
+
+                let deployment_result = session
+                    .sandbox()
+                    .deploy_contract(
+                        deploy.contract_bytes.clone(),
+                        0,
+                        deploy.data.clone(),
+                        deploy.salt.clone(),
+                        deploy.caller.clone(),
+                        gas_limit,
+                        None,
+                    );
+                    println!("Deployment result: {:?}", deployment_result.result);
+                    deployment_result.result
+                    .map_err(|e| {println!("ERR {:?}", e); anyhow::anyhow!("Error executing deploy: {:?}", e)})?
+                    .result
+            }
+        };
+
+        println!("Result: {:?}", result);
+        // results.flags ? revert?
+
+        self.check_properties(&session)
+    }
+
+    fn check_properties(&self, session: &Session<MinimalRuntime>) -> Result<()> {
+        //TODO! We need to check the properties of the contract
+        Ok(())
+    }
+
+
+    fn run(&mut self) -> Result<()> {
+        let mut session = Session::<MinimalRuntime>::new()?;
+        let mut trace = Vec::new();
+        let mut current_state = None;
+
+        // Initialize the state:
+        //    - Assigning initial budget to caller addresses
+        //STEP
+        match self.cache.get(&hash_trace(&mut trace)) {
+            Some(snapshot) => {
+                println! ( "Cache hit");
+                // The trace is already in the cache set current state
+                current_state = Some(snapshot);
+            }
+            None => {
+                // The trace was not in the cache, apply the previous state if any
+                if let Some(snapshot) = current_state {
+                    session.sandbox().restore_snapshot(snapshot.clone());
+                }
+                // Execute the given action
+                self.initialize_state(&mut session, &trace)?;
+
+                // If the closure returned Ok(()) then store the new state in the cache
+                self.cache
+                    .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+                current_state = None;
+            }
+        };
+
+        // Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
+        let constructor = self.generate_constructor();
+        let contract_address = constructor.calculate_address();
+        println!("Contract address: {:?}", contract_address);
+        let call_deploy = FuzzerCall::Deploy(constructor);
+        trace.push(call_deploy);
+
+        //STEP
+        match self.cache.get(&hash_trace(&mut trace)) {
+            Some(snapshot) => {
+                println!( "Cache hit");
+
+                // The trace is already in the cache set current state
+                current_state = Some(snapshot);
+            }
+            None => {
+                println!( "Cache miss");
+                // The trace was not in the cache, apply the previous state if any
+                if let Some(snapshot) = current_state {
+                    println!( "cloning saved state from previous cache");
+
+                    session.sandbox().restore_snapshot(snapshot.clone());
+                }
+                // Execute the given action
+                self.execute_call(&mut session, &trace)?;
+
+                // If the closure returned Ok(()) then store the new state in the cache
+                self.cache
+                    .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+                current_state = None;
+            }
+        };
+
+        // Randomly choose how many fuzzed messages to send
+        let iterations = self
+            .rng
+            .borrow_mut()
+            .usize(..self.max_number_of_transactions);
+
+        for _i in 0..iterations {
+            println!("iteration: {}", _i);
+            trace.push(FuzzerCall::Message(self.generate_message(contract_address.clone())));
+
+            //STEP
+            match self.cache.get(&hash_trace(&mut trace)) {
+                Some(snapshot) => {
+                    println! ( "Cache hit");
+
+                    // The trace is already in the cache set current state
+                    current_state = Some(snapshot);
+                }
+                None => {
+                    // The trace was not in the cache, apply the previous state if any
+                    if let Some(snapshot) = current_state {
+                        session.sandbox().restore_snapshot(snapshot.clone());
+                    }
+                    // Execute the given action
+                    self.execute_call(&mut session, &trace)?;
+
+                    // If the closure returned Ok(()) then store the new state in the cache
+                    self.cache
+                        .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+                    current_state = None;
+                }
+            };
+        }
+        Ok(())
+    }
+
+
+
 }
 
 #[derive(StdHash)]
@@ -474,11 +617,34 @@ enum FuzzerCall {
 struct FuzzerDeploy {
     caller: AccountId,
     endowment: Balance,
-    bytecode: Vec<u8>,
-    input: Vec<u8>,
+    contract_bytes: Vec<u8>,
+    data: Vec<u8>,
     salt: Vec<u8>,
 }
+impl FuzzerDeploy {
+    fn calculate_code_hash(&self) -> CodeHash {
+        Hashing::hash(&self.contract_bytes)
+    }
 
+    fn calculate_address(&self) -> AccountId {
+        let deploying_address = &self.caller;
+        let code_hash: CodeHash = self.calculate_code_hash();
+        let input_data = &self.data;
+        let salt = &self.salt;
+        
+        let entropy = (b"contract_addr_v1", deploying_address, code_hash, input_data, salt)
+        .using_encoded(Hashing::hash);
+        Decode::decode(&mut TrailingZeroInput::new(entropy.as_ref()))
+        .expect("infinite length input; no invalid inputs for type; qed")
+
+        // DefaultAddressGenerator::contract_address(
+        //     &deploying_address,
+        //     &code_hash,
+        //     &input_data,
+        //     &salt,
+        // )        
+    }
+}
 #[derive(StdHash, Debug)]
 struct FuzzerMessage {
     caller: AccountId,
@@ -487,136 +653,25 @@ struct FuzzerMessage {
     input: Vec<u8>,
 }
 
-// impl Hash for FuzzerCall {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.call_type.hash(state);
-//         self.call_name.hash(state);
-//         for arg in &self.call_args {
-//             arg.hash(state);
-//         }
-//     }
-// }
-
 type FuzzerTrace = Vec<FuzzerCall>;
-type TraceHash = u64;
-fn hash_trace(trace: &[FuzzerCall]) -> u64 {
+fn hash_trace(trace: &[FuzzerCall]) -> TraceHash {
     let mut hasher = DefaultHasher::new();
     trace.hash(&mut hasher);
     hasher.finish()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut fuzzer =
+    env_logger::init();
+    let mut fuzzer: RuntimeFuzzer =
         RuntimeFuzzer::new(PathBuf::from("./flipper/target/ink/flipper.contract"));
-    //println!("Generated constructor {:?}", fuzzer.generate_constructor());
-    println!("Generated message {:?}", fuzzer.generate_message());
-    println!("Generated message {:?}", fuzzer.generate_message());
-    //println!("Generated message {:?}", fuzzer.generate_message());
-    //return Ok(());
 
-    // TODO! use a command line argument parsing lib. Check what ink/drink ppl uses
-    let contract_path = Path::new("./flipper/target/ink/flipper.contract");
-    let contract: ContractBundle =
-        ContractBundle::load(contract_path).expect("Failed to load contract");
-
-    let transcoder = contract.transcoder;
-    let metadata = transcoder.metadata();
-    //println!("type of metadata: {:?}", metadata);
-    let constructors = metadata.spec().constructors();
-
-    // for constructor in constructors {
-    //     println!("Constructor: {:?}", constructor);
-    // }
-
-    let messages = metadata.spec().messages();
-    // for message in messages {
-    //     println!("Message: {:?}", message);
-    // }
-
-    let mut rng = Rng::new();
-
-    let mut session = Session::<MinimalRuntime>::new()?;
-
-    for caller in &fuzzer.potential_callers {
-        let caller_balance = session.sandbox().free_balance(caller);
-        println!("Caller balance before: {:?}", caller_balance);
-        println!("Minting to caller: {:?}", caller);
-        let res = session
-            .sandbox()
-            .mint_into(caller.to_owned(), Balance::max_value() / 1000);
-        println!("Minting result: {:?}", res);
-        let caller_balance = session.sandbox().free_balance(caller);
-        println!("Caller balance after: {:?}", caller_balance);
-        println!("\n");
+    loop {
+    
+    let r = fuzzer.run();
+    println!("Result: {:?}", r);
     }
 
-    let gas_limit = Weight::max_value() / 4;
-    let constructor = fuzzer.generate_constructor();
-
-    let balance_caller = session.sandbox().free_balance(&constructor.caller);
-    println!("Caller balance: {:?}", balance_caller);
-    println!("Caller address {:?}", constructor.caller);
-    let contract_deploy = session.sandbox().deploy_contract(
-        constructor.bytecode,
-        0,
-        constructor.input,
-        constructor.salt,
-        constructor.caller,
-        gas_limit,
-        Some(Balance::max_value() / 100000),
-    );
-
-    println!("Contract deploy: {:?}", contract_deploy);
-    let deployment_address = contract_deploy.result.unwrap().account_id;
-
-    // for i in  {
-    //     let call = fuzzer.generate_message();
-    // }
-    let iterations = rng.u8(..10);
-    println!("\n");
-    println!("Iterations: {:?}", iterations);
-    println!("\n");
-
-    for i in 1..iterations {
-        let message = fuzzer.generate_message();
-
-        let caller_balance = session.sandbox().free_balance(&message.caller);
-        println!("Caller {i} balance: {:?}", caller_balance);
-        let result = session.sandbox().call_contract(
-            deployment_address.clone(),
-            message.endowment,
-            message.input,
-            message.caller,
-            Weight::max_value(),
-            Some(Balance::max_value() / 100000),
-            Determinism::Enforced,
-        );
-        println!("Message result {i}: {:?}", result);
-        println!("\n");
-    }
-
-    Ok(())
-
-    //session.deploy_bundle(       , "new", &["true"], NO_SALT, NO_ENDOWMENT)?;
-
-    //List types and methods
-    // let methods_description = contract.contract.methods;
-
-    // Run deploy(fuzzed_args)
-    // N = FuzzedLen()
-    // for i in 0..N:
-    //     Functype = rng.choice(methods_description))
-    //     for arg in functypes.args:
-    //          match(arg.type){
-    //              int => rng.int()
-    //              bool => rng.bool()
-    //              string => rng.string()
-    //              address => rng.address()
-    //              bytes => rng.bytes()
-    //          }
-    //     TAKE SNAPSHOT()
-
-    //     FOR i in 0..M:
+    return Ok(());
 }
 
 fn maint() -> Result<(), Box<dyn std::error::Error>> {
@@ -641,6 +696,7 @@ fn maint() -> Result<(), Box<dyn std::error::Error>> {
 
 fn execute_main_logic() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::<MinimalRuntime>::new()?;
+
     // Load contract from file
     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
     let contract = ContractBundle::load(contract_path).expect("Failed to load contract");
