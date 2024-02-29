@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Ok, Result};
 
 use drink::{
     frame_support::{
@@ -175,7 +175,7 @@ impl RuntimeFuzzer {
         ScaleCompact(size).encode_to(&mut encoded);
 
         let param_type_def = self.get_typedef(sequence.type_param.id)?;
-        for i in 0..size {
+        for _i in 0..size {
             let mut param_encoded = self.generate_argument(param_type_def)?;
             encoded.append(&mut param_encoded);
         }
@@ -399,7 +399,7 @@ impl RuntimeFuzzer {
     }
 
     // Generates a fuzzed message to be added in the trace
-    fn generate_message(&self, callee: AccountId) -> FuzzerMessage {
+    fn generate_message(&self, callee: &AccountId) -> FuzzerMessage {
         let transcoder = &self.contract.transcoder;
         let metadata = transcoder.metadata();
 
@@ -438,10 +438,9 @@ impl RuntimeFuzzer {
         } else {
             0
         };
-
         FuzzerMessage {
             caller,
-            callee,
+            callee: callee.clone(),
             endowment,
             input,
         }
@@ -550,63 +549,74 @@ impl RuntimeFuzzer {
     }
 
     fn run(&mut self) -> Result<()> {
+        debug!("Starting run");
         let mut session = Session::<MinimalRuntime>::new()?;
         let mut trace = Vec::new();
         let mut current_state = None;
 
+
         // Initialize the state:
         //    - Assigning initial budget to caller addresses
-        //STEP
+        // CACHED STEP: Check if the cache know how to initialize the state
         match self.cache.get(&hash_trace(&trace)) {
             Some(snapshot) => {
-                println!("Cache hit");
                 // The trace is already in the cache set current state
                 current_state = Some(snapshot);
+                debug!("Cahe HIT: Initialization is taken from the cache");
             }
             None => {
+                debug!("Cahe MISS: We need to run the initialization at least once");
                 // The trace was not in the cache, apply the previous state if any
                 if let Some(snapshot) = current_state {
+                    // this should never happen, we should not have a previous snapshot at this point
+                    assert!(false);
                     session.sandbox().restore_snapshot(snapshot.clone());
                 }
-                // Execute the given action
+                // Execute the action: Initialize the state
                 self.initialize_state(&mut session, &trace)?;
 
-                // If the closure returned Ok(()) then store the new state in the cache
+                // If the initialization went ok then save the result in the cache
                 self.cache
                     .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+
+                // The current state is already in the session. Next step needs not to load it from the `current_state`
+                // Also this should be already None
                 current_state = None;
             }
         };
 
         // Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
         let constructor = self.generate_constructor();
+        // The deployment message is known, we can now pre-calculate the contract address 
         let contract_address = constructor.calculate_address();
-        println!("Contract address: {:?}", contract_address);
-        let call_deploy = FuzzerCall::Deploy(constructor);
-        trace.push(call_deploy);
+        debug!("Contract address: {:?}", contract_address);
 
-        //STEP
+        // Add the deployment to the trace.
+        trace.push(FuzzerCall::Deploy(constructor));
+
+        // CACHED STEP: Check we happened to choose the same constructor as a previous run
         match self.cache.get(&hash_trace(&trace)) {
             Some(snapshot) => {
-                println!("Cache hit");
-
+                debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
                 // The trace is already in the cache set current state
                 current_state = Some(snapshot);
             }
             None => {
-                println!("Cache miss");
+                debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
                 // The trace was not in the cache, apply the previous state if any
                 if let Some(snapshot) = current_state {
-                    println!("cloning saved state from previous cache");
-
+                    debug!("The current state is not yet materialized in the session, restoring current state.");
                     session.sandbox().restore_snapshot(snapshot.clone());
                 }
-                // Execute the given action
+
+                // Execute the action
                 self.execute_call(&mut session, &trace)?;
 
-                // If the closure returned Ok(()) then store the new state in the cache
+                // If the execution returned Ok(()) then store the new state in the cache
                 self.cache
                     .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+
+                    // The current state is already in the session. Next step needs not to load it from the `current_state`
                 current_state = None;
             }
         };
@@ -617,28 +627,31 @@ impl RuntimeFuzzer {
             .borrow_mut()
             .usize(..self.max_number_of_transactions);
 
-        for _i in 0..iterations {
-            println!("iteration: {}", _i);
+        for i in 0..iterations {
+            debug!("Iteration: {}/{}", i, iterations);
             trace.push(FuzzerCall::Message(
-                self.generate_message(contract_address.clone()),
+                self.generate_message(&contract_address),
             ));
 
             //STEP
             match self.cache.get(&hash_trace(&trace)) {
                 Some(snapshot) => {
-                    println!("Cache hit");
-
+                    debug!("Cahe HIT: At iteration {}, Same trace prolog was choosen and executed before before, reloading state from cache", i);
                     // The trace is already in the cache set current state
                     current_state = Some(snapshot);
                 }
                 None => {
+                    debug!("Cahe MISS: Same trace prolog was never executed before");
+
                     // The trace was not in the cache, apply the previous state if any
                     if let Some(snapshot) = current_state {
+                        debug!("At iteration {}, the current state is not yet materialized in the session, restoring current state.", i);
                         session.sandbox().restore_snapshot(snapshot.clone());
                     }
-                    // Execute the given action
+                    // Execute the action
                     self.execute_call(&mut session, &trace)?;
 
+                    debug!("Execution at itereation {} passed. Saving it in the cache", i);
                     // If the closure returned Ok(()) then store the new state in the cache
                     self.cache
                         .insert(hash_trace(&trace), session.sandbox().take_snapshot());
@@ -697,7 +710,7 @@ fn hash_trace(trace: &[FuzzerCall]) -> TraceHash {
     hasher.finish()
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
     // You can enable the output via the environment variable RUST_LOG
     env_logger::init();
@@ -708,12 +721,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let r = fuzzer.run();
         println!("Result: {:?}", r);
+        r?;
+        break;
     }
 
     Ok(())
 }
 
-fn maint() -> Result<(), Box<dyn std::error::Error>> {
+fn maint() -> Result<()> {
     // Get the number of available logical CPU cores
     let num_cpus = rayon::current_num_threads();
     println!("Number of CPU cores: {}", num_cpus);
@@ -733,7 +748,7 @@ fn maint() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn execute_main_logic() -> Result<(), Box<dyn std::error::Error>> {
+fn execute_main_logic() -> Result<()> {
     let mut session = Session::<MinimalRuntime>::new()?;
 
     // Load contract from file
