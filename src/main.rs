@@ -718,12 +718,8 @@ fn main() -> Result<()> {
     let mut fuzzer: RuntimeFuzzer =
         RuntimeFuzzer::new(PathBuf::from("./flipper/target/ink/flipper.contract"));
 
-    loop {
-        let r = fuzzer.run();
-        println!("Result: {:?}", r);
-        r?;
-        break;
-    }
+    let r = fuzzer.run();
+    println!("Result: {:?}", r);
 
     Ok(())
 }
