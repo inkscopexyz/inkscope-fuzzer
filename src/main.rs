@@ -527,13 +527,9 @@ impl RuntimeFuzzer {
             None => anyhow::bail!("No calls to execute"),
         };
 
-        let contract_address;
-
-        //TODO: This result has to be checked for reverts. In the flags field we can find the revert flag
         let result = match call {
             FuzzerCall::Message(message) => {
                 println!("Sending message with data {:?}", message);
-                contract_address = message.callee.clone();
 
                 session
                     .sandbox()
@@ -550,8 +546,6 @@ impl RuntimeFuzzer {
                     .map_err(|e| anyhow::anyhow!("Error executing message: {:?}", e))?
             }
             FuzzerCall::Deploy(deploy) => {
-                info!("Deploying contract with data {:?}", deploy);
-
                 let deployment_result = session.sandbox().deploy_contract(
                     deploy.contract_bytes.clone(),
                     0,
@@ -562,16 +556,16 @@ impl RuntimeFuzzer {
                     None,
                 );
                 println!("Deployment result: {:?}", deployment_result.result);
-                let parsed_deployment = deployment_result.result.map_err(|e| {
-                    println!("ERR {:?}", e);
-                    anyhow::anyhow!("Error executing deploy: {:?}", e)
-                })?;
-                contract_address = parsed_deployment.account_id;
-                parsed_deployment.result
+                deployment_result
+                    .result
+                    .map_err(|e| {
+                        println!("ERR {:?}", e);
+                        anyhow::anyhow!("Error executing deploy: {:?}", e)
+                    })?
+                    .result
             }
         };
-
-        println!("Result: {:?}", result);
+        debug!("Execute Call result {:?}", result);
         // results.flags ? revert?
 
         self.check_properties(session, contract_address)
@@ -740,7 +734,7 @@ impl RuntimeFuzzer {
     }
 }
 
-#[derive(StdHash)]
+#[derive(StdHash, Debug)]
 enum FuzzerCall {
     Deploy(FuzzerDeploy),
     Message(FuzzerMessage),
