@@ -22,7 +22,7 @@ use drink::{
     },
     sandbox::{self, Snapshot},
     session::{self, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
-    BalanceOf, ContractBundle, DispatchError, SandboxConfig, Weight,
+    BalanceOf, ContractBundle, DispatchError, SandboxConfig, Selector, Weight,
 };
 use env_logger;
 use fastrand::Rng;
@@ -497,9 +497,12 @@ impl RuntimeFuzzer {
             None => anyhow::bail!("No calls to execute"),
         };
 
+        let contract_address;
+
         let result = match call {
             FuzzerCall::Message(message) => {
                 println!("Sending message with data {:?}", message);
+                contract_address = message.callee.clone();
 
                 session
                     .sandbox()
@@ -528,24 +531,62 @@ impl RuntimeFuzzer {
                     None,
                 );
                 println!("Deployment result: {:?}", deployment_result.result);
-                deployment_result
-                    .result
-                    .map_err(|e| {
-                        println!("ERR {:?}", e);
-                        anyhow::anyhow!("Error executing deploy: {:?}", e)
-                    })?
-                    .result
+                let parsed_deployment = deployment_result.result.map_err(|e| {
+                    println!("ERR {:?}", e);
+                    anyhow::anyhow!("Error executing deploy: {:?}", e)
+                })?;
+                contract_address = parsed_deployment.account_id;
+                parsed_deployment.result
             }
         };
 
         println!("Result: {:?}", result);
         // results.flags ? revert?
 
-        self.check_properties(session)
+        self.check_properties(session, contract_address)
     }
 
-    fn check_properties(&self, session: &Session<MinimalRuntime>) -> Result<()> {
-        //TODO! We need to check the properties of the contract
+    fn check_properties(
+        &self,
+        session: &mut Session<MinimalRuntime>,
+        contract_address: AccountId,
+    ) -> Result<()> {
+        let transcoder = &self.contract.transcoder;
+        let metadata = transcoder.metadata();
+
+        // TODO: We need to control this value from different places
+        let caller = self.generate_caller();
+
+        // Keep only the messages that are used to check properties
+        let fuzzing_property_selectors = metadata
+            .spec()
+            .messages()
+            .iter()
+            .filter(|message| message.label().contains("inkscope_"))
+            .map(|message| message.selector());
+
+        // TODO: This assumes that the property methods do not require any arguments, just the selector
+        for property_selector in fuzzing_property_selectors {
+            let result = session
+                .sandbox()
+                .call_contract(
+                    contract_address.clone(),
+                    0,
+                    property_selector.to_bytes().to_vec(),
+                    caller.clone(),
+                    Weight::max_value() / 4,
+                    None,
+                    Determinism::Enforced,
+                )
+                .result
+                .map_err(|e| {
+                    anyhow::anyhow!("Error checking property method: {:?}", e)
+                })?;
+            println!("Property method result: {:?}", result);
+
+            //TODO: If one of the properties fails we should stop the execution
+        }
+
         Ok(())
     }
 
@@ -718,8 +759,9 @@ fn main() -> Result<()> {
     // You can enable the output via the environment variable RUST_LOG
     env_logger::init();
 
-    let mut fuzzer: RuntimeFuzzer =
-        RuntimeFuzzer::new(PathBuf::from("./flipper/target/ink/flipper.contract"));
+    let mut fuzzer: RuntimeFuzzer = RuntimeFuzzer::new(PathBuf::from(
+        "./test-contracts/flipper/target/ink/flipper.contract",
+    ));
 
     let r = fuzzer.run();
     println!("Result: {:?}", r);
