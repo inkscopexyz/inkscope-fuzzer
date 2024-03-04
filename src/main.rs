@@ -413,11 +413,12 @@ impl RuntimeFuzzer {
             }
         }
 
-         // Select one of messages randomly
+        // Select one of messages randomly
         let selected_message = self
             .rng
             .borrow_mut()
-            .choice(messages).expect("No messages declared in the abi");
+            .choice(messages)
+            .expect("No messages declared in the abi");
         let selectec_args_spec = selected_message.args();
 
         let selector = selected_message.selector();
@@ -503,7 +504,7 @@ impl RuntimeFuzzer {
                 session
                     .sandbox()
                     .call_contract(
-                        message.caller.clone(),
+                        message.callee.clone(),
                         message.endowment,
                         message.input.clone(),
                         message.caller.clone(),
@@ -554,7 +555,6 @@ impl RuntimeFuzzer {
         let mut trace = Vec::new();
         let mut current_state = None;
 
-
         // Initialize the state:
         //    - Assigning initial budget to caller addresses
         // CACHED STEP: Check if the cache know how to initialize the state
@@ -587,7 +587,7 @@ impl RuntimeFuzzer {
 
         // Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
         let constructor = self.generate_constructor();
-        // The deployment message is known, we can now pre-calculate the contract address 
+        // The deployment message is known, we can now pre-calculate the contract address
         let contract_address = constructor.calculate_address();
         debug!("Contract address: {:?}", contract_address);
 
@@ -616,7 +616,7 @@ impl RuntimeFuzzer {
                 self.cache
                     .insert(hash_trace(&trace), session.sandbox().take_snapshot());
 
-                    // The current state is already in the session. Next step needs not to load it from the `current_state`
+                // The current state is already in the session. Next step needs not to load it from the `current_state`
                 current_state = None;
             }
         };
@@ -651,7 +651,10 @@ impl RuntimeFuzzer {
                     // Execute the action
                     self.execute_call(&mut session, &trace)?;
 
-                    debug!("Execution at itereation {} passed. Saving it in the cache", i);
+                    debug!(
+                        "Execution at itereation {} passed. Saving it in the cache",
+                        i
+                    );
                     // If the closure returned Ok(()) then store the new state in the cache
                     self.cache
                         .insert(hash_trace(&trace), session.sandbox().take_snapshot());
