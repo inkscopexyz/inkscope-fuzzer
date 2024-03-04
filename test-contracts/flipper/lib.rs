@@ -41,4 +41,19 @@ mod flipper {
             self.value
         }
     }
+
+    #[cfg(feature = "fuzz-testing")]
+    #[ink(impl)]
+    impl Flipper {
+        #[cfg(feature = "fuzz-testing")]
+        #[ink(message)]
+        pub fn inkscope_property_1(&self) -> bool {
+            true
+        }
+        #[cfg(feature = "fuzz-testing")]
+        #[ink(message)]
+        pub fn inkscope_property_2(&self) -> bool {
+            false
+        }
+    }
 }

@@ -21,4 +21,5 @@ path = "lib.rs"
 [features]
 default = ["std"]
 std = ["ink/std", "scale/std", "scale-info/std"]
+fuzz-testing = []
 ink-as-dependency = []
