@@ -566,9 +566,12 @@ impl RuntimeFuzzer {
             }
         };
         debug!("Execute Call result {:?}", result);
-        // results.flags ? revert?
-
-        self.check_properties(session, contract_address)
+        let success = result.flags.is_empty();
+        if success {
+            self.check_properties(session, contract_address)
+        } else {
+            Err(anyhow::anyhow!("Execution reverted"))
+        }
     }
 
     fn check_properties(
@@ -608,6 +611,9 @@ impl RuntimeFuzzer {
                     anyhow::anyhow!("Error checking property method: {:?}", e)
                 })?;
             println!("Property method result: {:?}", result);
+            if result.data == vec![0, 0] {
+                return Err(anyhow::anyhow!("Property check failed"));
+            }
 
             //TODO: If one of the properties fails we should stop the execution
         }
@@ -688,13 +694,15 @@ impl RuntimeFuzzer {
         };
 
         // Randomly choose how many fuzzed messages to send
-        let iterations = self
-            .rng
-            .borrow_mut()
-            .usize(..self.max_number_of_transactions);
-
-        for i in 0..iterations {
-            debug!("Iteration: {}/{}", i, iterations);
+        // let iterations = self
+        //     .rng
+        //     .borrow_mut()
+        //     .usize(..self.max_number_of_transactions);
+        let mut i = 0;
+        //for i in 0..iterations {
+        loop {
+            i += 1;
+            //debug!("Iteration: {}/{}", i, iterations);
 
             trace.push(FuzzerCall::Message(
                 self.generate_message(&contract_address, None),
@@ -717,19 +725,44 @@ impl RuntimeFuzzer {
                     }
                     // Execute the action
                     //TODO: Execute call should not perform the check properties. If the call reverts we pop the trace and try again
-                    self.execute_call(&mut session, &trace)?;
+                    let call_result = self.execute_call(&mut session, &trace);
 
-                    debug!(
+                    match call_result {
+                        Err(e) => {
+                            if e.to_string().contains("Execution reverted") {
+                                debug!(
+                                    "Execution at itereation {} reverted. Popping the trace",
+                                    i
+                                );
+                                // If the closure returned Err(Execution reverted) then pop the trace
+                                trace.pop();
+                            } else {
+                                println!("Property check failed");
+                                println!("Error: {:?}", e);
+                                break;
+                                //println!("Trace: {:?}", trace.);
+                            }
+                        }
+                        _ => {
+                            debug!(
                         "Execution at itereation {} passed. Saving it in the cache",
                         i
                     );
-                    // If the closure returned Ok(()) then store the new state in the cache
-                    self.cache
-                        .insert(hash_trace(&trace), session.sandbox().take_snapshot());
-                    current_state = None;
+                            // If the closure returned Ok(()) then store the new state in the cache
+                            self.cache.insert(
+                                hash_trace(&trace),
+                                session.sandbox().take_snapshot(),
+                            );
+                            current_state = None;
+                        }
+                    }
                 }
             };
         }
+        println!("-------------");
+        println!("Bug found");
+        println!("-------------");
+        println!("Trace: {:?}", trace);
         Ok(())
     }
 }
@@ -787,7 +820,7 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let mut fuzzer: RuntimeFuzzer = RuntimeFuzzer::new(PathBuf::from(
-        "./test-contracts/flipper/target/ink/flipper.contract",
+        "./test-contracts/ityfuzz/target/ink/ityfuzz.contract",
     ));
 
     let r = fuzzer.run();
@@ -843,4 +876,12 @@ fn execute_main_logic() -> Result<()> {
 
 #[cfg(test)]
 #[path = "./tests/primitive_generator.rs"]
-mod main_post_deployments_test;
+mod primitive_generator;
+
+#[cfg(test)]
+#[path = "./tests/ityfuzz.rs"]
+mod ityfuzz;
+
+#[cfg(test)]
+#[path = "./tests/fuzz_flipper.rs"]
+mod fuzz_flipper;
