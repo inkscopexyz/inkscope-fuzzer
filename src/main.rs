@@ -521,10 +521,16 @@ impl RuntimeFuzzer {
     fn execute_call(
         &self,
         session: &mut Session<MinimalRuntime>,
-        call: &FuzzerCall,
-    ) -> Result<ExecReturnValue> {
+        calls: &[FuzzerCall],
+    ) -> Result<()> {
+        // TODO! We need to control this config value from s different place
+        let gas_limit = Weight::max_value() / 4;
 
-        //TODO: This result has to be checked for reverts. In the flags field we can find the revert flag
+        let call = match calls.last() {
+            Some(call) => call,
+            None => anyhow::bail!("No calls to execute"),
+        };
+
         let result = match call {
             FuzzerCall::Message(message) => {
                 info!("Sending message with data {:?}", message);
@@ -543,7 +549,6 @@ impl RuntimeFuzzer {
                     .map_err(|e| anyhow::anyhow!("Error executing message: {:?}", e))?
             }
             FuzzerCall::Deploy(deploy) => {
-                info!("Deploying contract with data {:?}", deploy);
                 let deployment_result = session.sandbox().deploy_contract(
                     deploy.contract_bytes.clone(),
                     0,
@@ -553,16 +558,18 @@ impl RuntimeFuzzer {
                     self.gas_limit,
                     None,
                 );
-                let parsed_deployment = deployment_result
+                println!("Deployment result: {:?}", deployment_result.result);
+                deployment_result
                     .result
-                    .map_err(|e| anyhow::anyhow!("Error executing deploy: {:?}", e))?;
-                parsed_deployment.result
+                    .map_err(|e| {
+                        println!("ERR {:?}", e);
+                        anyhow::anyhow!("Error executing deploy: {:?}", e)
+                    })?
+                    .result
             }
         };
-
-        debug!("Result: {:?}", result);
-        Ok(result)
-    }
+        debug!("Execute Call result {:?}", result);
+        // results.flags ? revert?
 
     // Error if a property fail
     fn check_properties(
