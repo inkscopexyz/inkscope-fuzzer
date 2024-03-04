@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Ok, Result};
-
 use drink::{
     frame_support::{
         pallet_prelude::{Decode, Encode},
@@ -54,7 +53,7 @@ type CodeHash = HashFor<MinimalRuntime>;
 type Hashing = HashingFor<MinimalRuntime>;
 type TraceHash = u64;
 
-struct RuntimeFuzzer {
+pub struct RuntimeFuzzer {
     rng: RefCell<Rng>,
     contract_path: PathBuf,
     contract: ContractBundle,
@@ -399,26 +398,17 @@ impl RuntimeFuzzer {
     }
 
     // Generates a fuzzed message to be added in the trace
-    fn generate_message(&self, callee: &AccountId) -> FuzzerMessage {
+    fn generate_message_input(&self, message_label: &str) -> Vec<u8> {
         let transcoder = &self.contract.transcoder;
         let metadata = transcoder.metadata();
 
-        // Keep only the messages that mutate the state unless ignore_pure_messages is false
-        let mut messages = vec![];
-        for message in metadata.spec().messages() {
-            if (message.mutates() || !self.ignore_pure_messages)
-                && !Self::is_property(message.label())
-            {
-                messages.push(message)
-            }
-        }
+        let selected_message = metadata
+            .spec()
+            .messages()
+            .iter()
+            .find(|message| message.label() == message_label)
+            .expect("Message not found in the abi");
 
-        // Select one of messages randomly
-        let selected_message = self
-            .rng
-            .borrow_mut()
-            .choice(messages)
-            .expect("No messages declared in the abi");
         let selectec_args_spec = selected_message.args();
 
         let selector = selected_message.selector();
@@ -431,6 +421,46 @@ impl RuntimeFuzzer {
 
         let mut encoded_args = self.generate_arguments(selected_args_type_defs).unwrap();
         input.append(&mut encoded_args);
+
+        input
+    }
+
+    // Generates a fuzzed message to be added in the trace
+    fn generate_message(
+        &self,
+        callee: &AccountId,
+        message_label: Option<&str>,
+    ) -> FuzzerMessage {
+        //TODO: Add closure to filter the messages
+        let transcoder = &self.contract.transcoder;
+        let metadata = transcoder.metadata();
+
+        let selected_message = if let Some(label) = message_label {
+            metadata
+                .spec()
+                .messages()
+                .iter()
+                .find(|message| message.label() == label)
+                .expect("Message not found in the abi")
+        } else {
+            // Keep only the messages that mutate the state unless ignore_pure_messages is false
+            let mut messages = vec![];
+            for message in metadata.spec().messages() {
+                if (message.mutates() || !self.ignore_pure_messages)
+                    && !Self::is_property(message.label())
+                {
+                    messages.push(message)
+                }
+            }
+
+            // Select one of messages randomly
+            self.rng
+                .borrow_mut()
+                .choice(messages)
+                .expect("No messages declared in the abi")
+        };
+
+        let input = self.generate_message_input(selected_message.label());
         let caller = self.generate_caller();
 
         // Send endowment only if the constructor is marked as payable
@@ -499,6 +529,7 @@ impl RuntimeFuzzer {
 
         let contract_address;
 
+        //TODO: This result has to be checked for reverts. In the flags field we can find the revert flag
         let result = match call {
             FuzzerCall::Message(message) => {
                 println!("Sending message with data {:?}", message);
@@ -670,8 +701,9 @@ impl RuntimeFuzzer {
 
         for i in 0..iterations {
             debug!("Iteration: {}/{}", i, iterations);
+
             trace.push(FuzzerCall::Message(
-                self.generate_message(&contract_address),
+                self.generate_message(&contract_address, None),
             ));
 
             //STEP
@@ -690,6 +722,7 @@ impl RuntimeFuzzer {
                         session.sandbox().restore_snapshot(snapshot.clone());
                     }
                     // Execute the action
+                    //TODO: Execute call should not perform the check properties. If the call reverts we pop the trace and try again
                     self.execute_call(&mut session, &trace)?;
 
                     debug!(
@@ -813,3 +846,7 @@ fn execute_main_logic() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "./tests/primitive_generator.rs"]
+mod main_post_deployments_test;
