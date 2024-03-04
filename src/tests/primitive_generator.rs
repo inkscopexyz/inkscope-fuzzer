@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod primitive_generator {
+pub mod primitive_generator_tests {
     use drink::{
         frame_support::sp_runtime::traits::Bounded, pallet_contracts::Determinism,
         session::Session, MinimalRuntime, Weight,
