@@ -20,7 +20,7 @@ use drink::{
         pallet_contracts_debugging::TracingExt, AccountIdFor, HashFor, MinimalRuntime,
     },
     sandbox::{self, Snapshot},
-    session::{self, contract_transcode::env_types::AccountId, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
+    session::{self, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
     BalanceOf, ContractBundle, DispatchError, SandboxConfig, Selector, Weight,
 };
 use env_logger;
@@ -65,7 +65,7 @@ pub struct RuntimeFuzzer {
     max_sequence_type_size: u8,
     max_number_of_transactions: usize,
     gas_limit: Weight,
-    property_prefix: &str,
+    property_prefix: String,
     fuzz_property_max_rounds: usize,
 }
 
@@ -99,8 +99,8 @@ impl RuntimeFuzzer {
             max_sequence_type_size: 100,
             max_number_of_transactions: 50,
             gas_limit: Weight::max_value() / 4,
-            property_prefix: "inkscope_",
-            fuzz_property_max_rounds: usize,
+            property_prefix: "inkscope_".into(),
+            fuzz_property_max_rounds: 100,
         }
     }
 
@@ -432,11 +432,10 @@ impl RuntimeFuzzer {
     }
 
     // Generates a fuzzed message to be added in the trace
-    fn generate_message(
-        &self,
-        callee: &AccountId,
-        filter: Fn(&str) -> bool,
-    ) -> FuzzerMessage {
+    fn generate_message<F>(&self, callee: &AccountId, filter: F) -> Result<FuzzerMessage>
+    where
+        F: Fn(&str) -> bool,
+    {
         //TODO: Add closure to filter the messages
         let transcoder = &self.contract.transcoder;
         let metadata = transcoder.metadata();
@@ -445,7 +444,8 @@ impl RuntimeFuzzer {
         let mut messages = vec![];
         for message in metadata.spec().messages() {
             if (message.mutates() || !self.ignore_pure_messages)
-                && filter(message.label() && !self.is_property(message.label()))
+                && filter(message.label())
+                && !self.is_property(message.label())
             {
                 messages.push(message)
             }
@@ -454,7 +454,7 @@ impl RuntimeFuzzer {
         // Select one of messages randomly
         let selected_message = match self.rng.borrow_mut().choice(messages) {
             Some(selected_message) => selected_message,
-            None => anyhow::bail!("No selected messsages"),
+            None => return anyhow::bail!("No selected messsages"),
         };
 
         let input = self.generate_message_input(selected_message.label());
@@ -466,17 +466,17 @@ impl RuntimeFuzzer {
         } else {
             0
         };
-        FuzzerMessage {
+        Ok(FuzzerMessage {
             caller,
             callee: callee.clone(),
             endowment,
             input,
-        }
+        })
     }
 
     // Defines which method names will be considered to be a property
     fn is_property(&self, function_name: &str) -> bool {
-        function_name.starts_with(self.property_prefix)
+        function_name.starts_with(self.property_prefix.as_str())
     }
 
     //This should generate a random account id from the set of potential callers
@@ -541,7 +541,7 @@ impl RuntimeFuzzer {
                     deploy.data.clone(),
                     deploy.salt.clone(),
                     deploy.caller.clone(),
-                    gas_limit,
+                    self.gas_limit,
                     None,
                 );
                 let parsed_deployment = deployment_result
@@ -556,43 +556,42 @@ impl RuntimeFuzzer {
             anyhow::bail!("Execution reverted");
         };
 
-        self.check_properties(session, trace)
+        self.check_properties(
+            session,
+            &trace.contract().expect("Contract address should exist"),
+        )
     }
 
     fn check_properties(
         &self,
         session: &mut Session<MinimalRuntime>,
-        trace: &FuzzerTrace
+        contract_address: &AccountId,
     ) -> Result<()> {
-        let contract_address = trace.contract()?;
-
         let transcoder = &self.contract.transcoder;
         let metadata = transcoder.metadata();
 
         // Keep only the messages that mutate the state unless ignore_pure_messages is false
-        let mut property_messages = metadata.spec().messages().to_vec();
-        property_messages.retain(|m| self.is_property(message.label()));
+        let mut property_messages = metadata.spec().messages().iter().collect::<Vec<_>>();
+        property_messages.retain(|m| self.is_property(m.label()));
 
         // TODO: We need to control this value from different places
         let caller = self.generate_caller();
         let checkpoint = session.sandbox().take_snapshot();
 
-        let max_rounds = if property.args().is_empty() {
-            1usize
-        } else {
-            1.min(self.fuzz_property_max_rounds)
-        };
-
         for property in property_messages {
+            let max_rounds = if property.args().is_empty() {
+                1usize
+            } else {
+                1.min(self.fuzz_property_max_rounds)
+            };
             for round in 0..max_rounds {
-                session.sandbox().restore_snapshot(checkpoint);
                 let data = self.generate_message_input(property.label());
                 let result = session
                     .sandbox()
                     .call_contract(
                         contract_address.clone(),
                         0,
-                        property_selector.to_bytes().to_vec(),
+                        data,
                         caller.clone(),
                         Weight::max_value() / 4,
                         None,
@@ -606,19 +605,23 @@ impl RuntimeFuzzer {
                 if result.data == vec![0, 0] {
                     return Err(anyhow::anyhow!("Property check failed"));
                 }
+                //TODO: After testing each property we should restore the state to the checkpoint in order to not affect the next property checks?
+                //TODO: Try to use dry-run to check the properties, should be faster
+                session.sandbox().restore_snapshot(checkpoint.clone());
             }
         }
-        session.sandbox().restore_snapshot(checkpoint);
+
+        //session.sandbox().restore_snapshot(checkpoint);
 
         // TODO: This assumes that the property methods do not require any arguments, just the selector
-        for property_selector in fuzzing_property_selectors {
-            println!("Property method result: {:?}", result);
-            if result.data == vec![0, 0] {
-                return Err(anyhow::anyhow!("Property check failed"));
-            }
+        // for property_selector in fuzzing_property_selectors {
+        //     println!("Property method result: {:?}", result);
+        //     if result.data == vec![0, 0] {
+        //         return Err(anyhow::anyhow!("Property check failed"));
+        //     }
 
-            //TODO: If one of the properties fails we should stop the execution
-        }
+        //     //TODO: If one of the properties fails we should stop the execution
+        // }
 
         Ok(())
     }
@@ -626,13 +629,13 @@ impl RuntimeFuzzer {
     fn run(&mut self) -> Result<()> {
         debug!("Starting run");
         let mut session = Session::<MinimalRuntime>::new()?;
-        let mut trace = Vec::new();
+        let mut trace = FuzzerTrace::new();
         let mut current_state = None;
 
         // Initialize the state:
         //    - Assigning initial budget to caller addresses
         // CACHED STEP: Check if the cache know how to initialize the state
-        match self.cache.get(&hash_trace(&trace)) {
+        match self.cache.get(&hash_trace(&trace.messages)) {
             Some(snapshot) => {
                 // The trace is already in the cache set current state
                 current_state = Some(snapshot);
@@ -650,8 +653,10 @@ impl RuntimeFuzzer {
                 self.initialize_state(&mut session)?;
 
                 // If the initialization went ok then save the result in the cache
-                self.cache
-                    .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+                self.cache.insert(
+                    hash_trace(&trace.messages),
+                    session.sandbox().take_snapshot(),
+                );
 
                 // The current state is already in the session. Next step needs not to load it from the `current_state`
                 // Also this should be already None
@@ -666,10 +671,10 @@ impl RuntimeFuzzer {
         debug!("Contract address: {:?}", contract_address);
 
         // Add the deployment to the trace.
-        trace.push(FuzzerCall::Deploy(constructor));
+        trace.push(FuzzerCall::Deploy(constructor))?;
 
         // CACHED STEP: Check we happened to choose the same constructor as a previous run
-        match self.cache.get(&hash_trace(&trace)) {
+        match self.cache.get(&hash_trace(&trace.messages)) {
             Some(snapshot) => {
                 debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
                 // The trace is already in the cache set current state
@@ -687,8 +692,10 @@ impl RuntimeFuzzer {
                 self.execute_call(&mut session, &trace)?;
 
                 // If the execution returned Ok(()) then store the new state in the cache
-                self.cache
-                    .insert(hash_trace(&trace), session.sandbox().take_snapshot());
+                self.cache.insert(
+                    hash_trace(&trace.messages),
+                    session.sandbox().take_snapshot(),
+                );
 
                 // The current state is already in the session. Next step needs not to load it from the `current_state`
                 current_state = None;
@@ -696,16 +703,16 @@ impl RuntimeFuzzer {
         };
 
         for i in 0..self.max_number_of_transactions {
-            debug!("Iteration: {}/{}", i, iterations);
+            debug!("Iteration: {}/{}", i, self.max_number_of_transactions);
 
             trace.push(FuzzerCall::Message(
                 self.generate_message(&contract_address, |function_name| {
                     !self.is_property(function_name)
-                }),
-            ));
+                })?,
+            ))?;
 
             //STEP
-            match self.cache.get(&hash_trace(&trace)) {
+            match self.cache.get(&hash_trace(&trace.messages)) {
                 Some(snapshot) => {
                     debug!("Cahe HIT: At iteration {}, Same trace prolog was choosen and executed before before, reloading state from cache", i);
                     // The trace is already in the cache set current state
@@ -731,7 +738,7 @@ impl RuntimeFuzzer {
                                     i
                                 );
                                 // If the closure returned Err(Execution reverted) then pop the trace
-                                trace.pop();
+                                trace.messages.pop();
                             } else {
                                 println!("Property check failed");
                                 println!("Error: {:?}", e);
@@ -746,7 +753,7 @@ impl RuntimeFuzzer {
                     );
                             // If the closure returned Ok(()) then store the new state in the cache
                             self.cache.insert(
-                                hash_trace(&trace),
+                                hash_trace(&trace.messages),
                                 session.sandbox().take_snapshot(),
                             );
                             current_state = None;
@@ -758,7 +765,7 @@ impl RuntimeFuzzer {
         println!("-------------");
         println!("Bug found");
         println!("-------------");
-        println!("Trace: {:?}", trace);
+        println!("Trace: {:?}", trace.messages);
         Ok(())
     }
 }
@@ -804,48 +811,52 @@ struct FuzzerMessage {
     input: Vec<u8>,
 }
 
-struct FuzzerTrace{
+struct FuzzerTrace {
     messages: Vec<FuzzerCall>,
     contract: Option<AccountId>,
 }
 
-impl FuzzerTrace{
-    pub fn new()->Self{
-        Self { messages: vec![], contract: None }
+impl FuzzerTrace {
+    pub fn new() -> Self {
+        Self {
+            messages: vec![],
+            contract: None,
+        }
     }
-    pub fn push(&mut self, message:FuzzerCall) -> Result<()>{
-        if self.messages.is_empty(){
-            if let FuzzerCall::Message(m) = message{
+    pub fn push(&mut self, message: FuzzerCall) -> Result<()> {
+        if self.messages.is_empty() {
+            if let FuzzerCall::Message(m) = message {
                 anyhow::bail!("First call must be a deployment")
             }
             self.contract = match self.messages.first() {
-                Some(deploy) => match deploy{
-                    FuzzerCall::Deploy(deploy) => deploy.calculate_address(),
-                    FuzzerCall::Message(_) => anyhow::bail!("Trace must start with a deploy")
+                Some(deploy) => match deploy {
+                    FuzzerCall::Deploy(deploy) => Some(deploy.calculate_address()),
+                    FuzzerCall::Message(_) => {
+                        anyhow::bail!("Trace must start with a deploy")
+                    }
                 },
                 None => anyhow::bail!("No calls to execute"),
             };
-     
         }
         self.messages.push(message);
-        Ok(()))
+        Ok(())
     }
 
-    pub fn hash(&self)->TraceHash{
+    pub fn hash(&self) -> TraceHash {
         let mut hasher = DefaultHasher::new();
-        trace.hash(&mut hasher);
+        self.messages.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn contract(&self)->Result<AccountId>{
-        match self.contract {
-            Some(ocntract) => contract,
-            None => anyhow::bail!("Contract not set yet.")
+    pub fn contract(&self) -> Result<AccountId> {
+        match &self.contract {
+            Some(contract) => Ok(contract.to_owned()),
+            None => anyhow::bail!("Contract not set yet."),
         }
     }
 
-    pub fn last(&self) -> Result<&FuzzerCall>{
-         match self.messages.last() {
+    pub fn last(&self) -> Result<&FuzzerCall> {
+        match self.messages.last() {
             Some(call) => Ok(call),
             None => anyhow::bail!("No calls to execute"),
         }
