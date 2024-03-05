@@ -16,7 +16,7 @@ pub mod ityfuzz_tests {
             "./test-contracts/ityfuzz/target/ink/ityfuzz.contract",
         ));
         let mut session = Session::<MinimalRuntime>::new().expect("This should not fail");
-        fuzzer.initialize_state(&mut session, &[]);
+        fuzzer.initialize_state(&mut session);
 
         // Deploy the contract
         let constructor = fuzzer.generate_constructor();
@@ -138,7 +138,7 @@ pub mod ityfuzz_tests {
         assert!(!revert_flag);
 
         // Check the property
-        let res = fuzzer.check_properties(&mut session, contract_address);
+        let res = fuzzer.check_properties(&mut session, &contract_address);
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
         println!("{:?}", error_message);
