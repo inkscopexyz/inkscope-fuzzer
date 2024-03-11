@@ -1,3 +1,28 @@
+#[cfg(test)]
+pub mod primitive_generator_tests {
+
+    use crate::RuntimeFuzzer;
+    use std::path::PathBuf;
+
+    #[test]
+    #[ignore]
+    fn fuzz_ityfuzz() {
+        // Initialize the logger
+        env_logger::init();
+
+        // Initialize the fuzzer
+        let mut fuzzer: RuntimeFuzzer = RuntimeFuzzer::new(PathBuf::from(
+            "./test-contracts/ityfuzz/target/ink/ityfuzz.contract",
+        ));
+
+        // Run the fuzzer and try to break the defined properties
+        let r = fuzzer.run(None);
+        assert!(r.is_err());
+        let error = r.unwrap_err();
+        assert_eq!(error.to_string(), "Property check failed");
+    }
+}
+
 // #[cfg(test)]
 // pub mod ityfuzz_tests {
 //     use drink::{
