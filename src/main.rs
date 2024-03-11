@@ -1,3 +1,5 @@
+mod generator;
+mod fuzzer;
 use anyhow::{anyhow, Ok, Result};
 use drink::{
     frame_support::{
@@ -20,7 +22,7 @@ use drink::{
         pallet_contracts_debugging::TracingExt, AccountIdFor, HashFor, MinimalRuntime,
     },
     sandbox::{self, Snapshot},
-    session::{self, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
+    session::{self, contract_transcode::Value, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
     BalanceOf, ContractBundle, DispatchError, SandboxConfig, Selector, Weight,
 };
 use env_logger;
@@ -564,6 +566,28 @@ impl RuntimeFuzzer {
         Ok(result)
     }
 
+    fn decode_call(&self, call: &FuzzerCall) -> Result<Value> {
+        match call {
+            FuzzerCall::Message(message) => {
+                let decoded = self
+                    .contract
+                    .transcoder
+                    .decode_contract_message(&mut message.input.as_slice())
+                    .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
+                Ok(decoded)
+            }
+            FuzzerCall::Deploy(deploy) => {
+                let decoded = self
+                    .contract
+                    .transcoder
+                    .decode_contract_constructor(&mut deploy.data.as_slice())
+                    .map_err(|e| anyhow::anyhow!("Error decoding deploy: {:?}", e))?;
+                Ok(decoded)
+            }
+        }
+    }
+
+    
     // Error if a property fail
     fn check_properties(
         &self,
@@ -604,41 +628,14 @@ impl RuntimeFuzzer {
                     println!("Property check failed");
                     // trace?
                     for call in trace.messages.iter().chain(&[property_message]) {
-                        match call {
-                            FuzzerCall::Message(call) => {
-                                print!("Call: ");
-                                match self
-                                    .contract
-                                    .transcoder
-                                    .decode_contract_message(&mut call.input.as_slice())
-                                {
-                                    Err(e) => {
-                                        println!("{}", hex::encode(&call.input));
-                                    }
-                                    Result::Ok(x) => {
-                                        println!("{}", x);
-                                    }
-                                }
+                        match self.decode_call(&call){
+                            Err(e) => {
+                                println!("Raw call: {:?}", call.data());
                             }
-                            FuzzerCall::Deploy(call) => {
-                                print!("Deploy: ");
-                                match self
-                                    .contract
-                                    .transcoder
-                                    .decode_contract_constructor(
-                                        &mut call.data.as_slice(),
-                                    ) {
-                                    Err(e) => {
-                                        println!("{}", hex::encode(&call.data));
-                                    }
-                                    Result::Ok(x) => {
-                                        println!("{}", x);
-                                    }
-                                }
+                            Result::Ok(x) => {
+                                println!("Decoded call: {:?}", x);
                             }
-                        };
-                        //println!("{:?}", call);
-                        //print!("Message")
+                        }
                     }
                     //println!("Property failed at trace {:?}", trace);
                     anyhow::bail!("Property check failed");
@@ -788,6 +785,37 @@ enum FuzzerCall {
     Deploy(FuzzerDeploy),
     Message(FuzzerMessage),
 }
+impl FuzzerCall {
+    fn data(&self) -> &Vec<u8> {
+        match self {
+            FuzzerCall::Deploy(deploy) => &deploy.data,
+            FuzzerCall::Message(message) => &message.input,
+        }
+    }
+
+    fn caller(&self) -> &AccountId {
+        match self {
+            FuzzerCall::Deploy(deploy) => &deploy.caller,
+            FuzzerCall::Message(message) => &message.caller,
+        }
+    }
+
+    fn endowment(&self) -> &Balance {
+        match self {
+            FuzzerCall::Deploy(deploy) => &deploy.endowment,
+            FuzzerCall::Message(message) => &message.endowment,
+        }
+    }
+    
+    fn callee(&self) -> AccountId {
+        match self {
+            FuzzerCall::Deploy(deploy) => deploy.calculate_address(),
+            FuzzerCall::Message(message) => message.callee.clone(),
+        }
+    }
+
+
+}
 
 #[derive(StdHash, Debug)]
 struct FuzzerDeploy {
@@ -897,7 +925,7 @@ fn main() -> Result<()> {
     ));
 
     let r = fuzzer.run();
-    //println!("Result: {:?}", r);
+    println!("Result: {:?}", r);
 
     Ok(())
 }
