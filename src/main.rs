@@ -25,11 +25,14 @@ use scale_info::{
 use std::{
     any::Any,
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash as StdHash, Hasher},
     path::{Path, PathBuf},
     thread,
 };
+
+//TODO: add this to drink/runtime.rs
+pub type HashingFor<R> = <R as frame_system::Config>::Hashing;
 
 //This defines all the configurable types based on the current runtime: MinimalRuntime
 type Balance = BalanceOf<MinimalRuntime>;
@@ -108,7 +111,7 @@ impl RuntimeFuzzer {
         let mut encoded = Vec::new();
         //No length is included in the encoding as it is known at decoding
         let param_type_def = self.get_typedef(array.type_param.id)?;
-        for i in 0..array.len {
+        for _i in 0..array.len {
             let mut param_encoded = self.generate_argument(param_type_def)?;
             encoded.append(&mut param_encoded);
         }
@@ -133,9 +136,12 @@ impl RuntimeFuzzer {
         sequence: &TypeDefSequence<PortableForm>,
     ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
-        let size = self.rng.borrow_mut().usize(0..self.max_sequence_size);
+        // Fuzz a sequece size and encode it in compact form
+        let size = self.rng.borrow_mut().u8(0..self.max_sequence_type_size);
+        ScaleCompact(size).encode_to(&mut encoded);
+
         let param_type_def = self.get_typedef(sequence.type_param.id)?;
-        for i in 0..size {
+        for _i in 0..size {
             let mut param_encoded = self.generate_argument(param_type_def)?;
             encoded.append(&mut param_encoded);
         }
@@ -242,7 +248,7 @@ impl RuntimeFuzzer {
 
     fn generate_bit_sequence(
         &self,
-        bit_sequence: &TypeDefBitSequence<PortableForm>,
+        _bit_sequence: &TypeDefBitSequence<PortableForm>,
     ) -> Result<Vec<u8>> {
         Err(anyhow::anyhow!("Bitsequence currently not supported"))
     }
@@ -321,6 +327,7 @@ impl RuntimeFuzzer {
         let metadata = transcoder.metadata();
         let constructors = metadata.spec().constructors();
 
+        // Select one of the declared constructors randomly
         let selected_constructor = self
             .rng
             .borrow_mut()
@@ -328,6 +335,7 @@ impl RuntimeFuzzer {
             .expect("No constructors");
         let selectec_args_spec = selected_constructor.args();
 
+        // Build the encoded calldata. Starting by the method selector.
         let selector = selected_constructor.selector();
         let mut encoded = selector.to_bytes().to_vec();
 
@@ -477,16 +485,6 @@ struct FuzzerMessage {
     input: Vec<u8>,
 }
 
-// impl Hash for FuzzerCall {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.call_type.hash(state);
-//         self.call_name.hash(state);
-//         for arg in &self.call_args {
-//             arg.hash(state);
-//         }
-//     }
-// }
-
 type FuzzerTrace = Vec<FuzzerCall>;
 type TraceHash = u64;
 fn hash_trace(trace: &[FuzzerCall]) -> u64 {
@@ -588,27 +586,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-
-    //session.deploy_bundle(       , "new", &["true"], NO_SALT, NO_ENDOWMENT)?;
-
-    //List types and methods
-    // let methods_description = contract.contract.methods;
-
-    // Run deploy(fuzzed_args)
-    // N = FuzzedLen()
-    // for i in 0..N:
-    //     Functype = rng.choice(methods_description))
-    //     for arg in functypes.args:
-    //          match(arg.type){
-    //              int => rng.int()
-    //              bool => rng.bool()
-    //              string => rng.string()
-    //              address => rng.address()
-    //              bytes => rng.bytes()
-    //          }
-    //     TAKE SNAPSHOT()
-
-    //     FOR i in 0..M:
 }
 
 fn maint() -> Result<(), Box<dyn std::error::Error>> {
