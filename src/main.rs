@@ -254,6 +254,7 @@ impl Engine {
     }
 
     fn initialize_state(&self, session: &mut Session<MinimalRuntime>) -> Result<()> {
+    fn initialize_state(&self, session: &mut Session<MinimalRuntime>) -> Result<()> {
         debug!("Setting initial state. Give initial budget to caller addresses.");
         // Assigning initial budget to caller addresses
         let sandbox = session.sandbox();
@@ -355,6 +356,7 @@ impl Engine {
         &self,
         mut fuzzer: &mut Fuzzer,
         session: &mut Session<MinimalRuntime>,
+        trace: &FuzzerTrace,
         trace: &FuzzerTrace,
     ) -> Result<()> {
         let contract_address = trace.contract()?;
@@ -467,6 +469,7 @@ impl Engine {
 
         // Add the deployment to the trace.
         trace.push(FuzzerCall::Deploy(constructor))?;
+        trace.push(FuzzerCall::Deploy(constructor))?;
 
         // CACHE: Check we happened to choose the same constructor as a previous run
         match self.snapshot_cache.get(&trace.hash()) {
@@ -561,6 +564,7 @@ impl Engine {
     }
 }
 
+#[derive(StdHash, Debug)]
 #[derive(StdHash, Debug)]
 enum FuzzerCall {
     Deploy(FuzzerDeploy),
