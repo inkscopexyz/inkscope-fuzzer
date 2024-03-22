@@ -48,7 +48,16 @@ mod flipper {
         #[cfg(feature = "fuzz-testing")]
         #[ink(message)]
         pub fn inkscope_property_1(&self) -> bool {
+<<<<<<< HEAD
             self.value
+=======
+            true
+        }
+        #[cfg(feature = "fuzz-testing")]
+        #[ink(message)]
+        pub fn inkscope_property_2(&self) -> bool {
+            false
+>>>>>>> develop
         }
     }
 }
