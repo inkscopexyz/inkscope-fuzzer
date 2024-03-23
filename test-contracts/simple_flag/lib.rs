@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
-mod simple_flag {
+mod SimpleFlag {
 
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
@@ -16,20 +16,20 @@ mod simple_flag {
         /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
         pub fn new() -> Self {
-            Self { value: false }
+            Self { flag: false }
         }
 
 
         #[ink(message)]
         pub fn flip_bool(&mut self, arg_bool: bool) {
-            self.value = true;
+            self.flag = true;
         }
         
     }
 
     #[cfg(feature = "fuzz-testing")]
     #[ink(impl)]
-    impl Flipper {
+    impl SimpleFlag {
         #[cfg(feature = "fuzz-testing")]
         #[ink(message)]
         pub fn inkscope_property_1(&self) -> bool {
