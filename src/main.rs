@@ -5,14 +5,11 @@ mod fuzzer;
 mod types;
 mod engine;
 
-
 use crate::config::Config;
 use std::path::PathBuf;
 use clap::{self, Parser};
 use anyhow::{anyhow, Ok, Result};
 use engine::Engine;
-
-
 
 #[derive(Debug, Parser)]
 struct Cli {

@@ -10,7 +10,7 @@ use scale_info::{
 // Used to fuzz generate a single input data for a constructor or a message
 pub struct ArgumentsGenerator<'a> {
     registry: &'a PortableRegistry,
-    pub arguments: &'a Vec<TypeDef<PortableForm>>,
+    arguments: &'a Vec<TypeDef<PortableForm>>,
 }
 
 // Input Fuzzy Generator for a Constructor or Message arguments
