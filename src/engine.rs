@@ -1,4 +1,4 @@
-use crate::arguments::ArgumentsGenerator;
+use crate::generator::Generator;
 use crate::config::Config;
 use crate::constants::Constants;
 use crate::fuzzer::Fuzzer;
@@ -268,11 +268,9 @@ impl Engine {
             None => anyhow::bail!("No arguments for the selected constructor"),
         };
         let is_payable = method_info.payable;
-        let generator = ArgumentsGenerator::new(
-            self.contract.transcoder.metadata().registry(),
-            &method_info.arguments,
-        );
-        let mut encoded_arguments = generator.generate(fuzzer)?;
+        let generator =
+            Generator::new(self.contract.transcoder.metadata().registry());
+        let mut encoded_arguments = generator.generate(fuzzer, &method_info.arguments)?;
 
         let caller = self.generate_caller(fuzzer);
         // Send endowment only if the constructor is marked as payable
@@ -460,10 +458,7 @@ impl Engine {
                     }
 
                     // trace?
-                    for message in trace
-                        .messages
-                        .iter()
-                    {
+                    for message in trace.messages.iter() {
                         match self.decode_message(&message.input) {
                             Err(_e) => {
                                 println!("Raw message: {:?}", &message.input);

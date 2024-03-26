@@ -1,4 +1,4 @@
-mod arguments;
+mod generator;
 mod config;
 mod constants;
 mod fuzzer;
