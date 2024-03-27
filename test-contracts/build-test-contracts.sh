@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the directory where contracts are located
-contracts_dir="test-contracts"
+contracts_dir="./"
 
 # Check if the directory exists
 if [ ! -d "$contracts_dir" ]; then

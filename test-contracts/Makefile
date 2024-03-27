@@ -7,4 +7,4 @@ help:             ## Show the help.
 	@fgrep "##" Makefile | fgrep -v fgrep
 
 build-test-contracts:   ## Build the test contracts and fix the generated metadata
-	bash ./scripts/build-test-contracts.sh
+	bash ./build-test-contracts.sh
