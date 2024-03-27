@@ -541,9 +541,10 @@ impl Engine {
 
     pub fn run_campaign(
         &mut self,
-        max_iterations: usize,
-        fail_fast: bool,
     ) -> Result<CampaignResult> {
+        let max_iterations= self.config.max_rounds;
+        let fail_fast = self.config.fail_fast;
+        
         let start_time = std::time::Instant::now();
         let mut failed_traces = vec![];
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
