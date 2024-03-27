@@ -106,7 +106,7 @@ impl Default for Config {
         Self {
             fail_fast: true,
             max_rounds: 1000,
-            budget: 100,
+            budget: 1000000000000,
             accounts: vec![AccountId::new([0; 32]), AccountId::new([1; 32])],
             only_mutable: true,
             max_sequence_type_size: 10,
