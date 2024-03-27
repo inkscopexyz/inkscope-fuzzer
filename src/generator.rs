@@ -1,10 +1,24 @@
 use crate::fuzzer::Fuzzer;
-use anyhow::{Ok, Result};
-use parity_scale_codec::{Compact as ScaleCompact, Encode};
-use scale_info::PortableRegistry;
+use anyhow::{
+    Ok,
+    Result,
+};
+use parity_scale_codec::{
+    Compact as ScaleCompact,
+    Encode,
+};
 use scale_info::{
-    form::PortableForm, TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefCompact,
-    TypeDefComposite, TypeDefPrimitive, TypeDefSequence, TypeDefTuple, TypeDefVariant,
+    form::PortableForm,
+    PortableRegistry,
+    TypeDef,
+    TypeDefArray,
+    TypeDefBitSequence,
+    TypeDefCompact,
+    TypeDefComposite,
+    TypeDefPrimitive,
+    TypeDefSequence,
+    TypeDefTuple,
+    TypeDefVariant,
 };
 
 // Used to fuzz generate a single input data for a constructor or a message
@@ -34,7 +48,7 @@ impl<'a> Generator<'a> {
     ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
         for type_def in arguments {
-            //let type_def = self.get_typedef(arg.ty().ty().id)?;
+            // let type_def = self.get_typedef(arg.ty().ty().id)?;
             let mut arg_encoded = self.generate_argument(fuzzer, type_def)?;
             encoded.append(&mut arg_encoded);
         }
@@ -61,7 +75,8 @@ impl<'a> Generator<'a> {
         }
     }
 
-    // Generates a fuzzed encoded data for  composite type, consisting of either named (struct) or unnamed (tuple struct) fields
+    // Generates a fuzzed encoded data for  composite type, consisting of either named
+    // (struct) or unnamed (tuple struct) fields
     fn generate_composite(
         &self,
         fuzzer: &mut Fuzzer,
@@ -77,14 +92,15 @@ impl<'a> Generator<'a> {
     }
 
     // Generates a fuzzed encoded data for a sized array type like [u8;32].
-    // The size is prestablished in the type definition and does not appear in the encoding
+    // The size is prestablished in the type definition and does not appear in the
+    // encoding
     fn generate_array(
         &self,
         fuzzer: &mut Fuzzer,
         array: &TypeDefArray<PortableForm>,
     ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
-        //No length is included in the encoding as it is known at decoding
+        // No length is included in the encoding as it is known at decoding
         let param_type_def = self.get_typedef(array.type_param.id)?;
         for _i in 0..array.len {
             let mut param_encoded = self.generate_argument(fuzzer, &param_type_def)?;
@@ -152,8 +168,9 @@ impl<'a> Generator<'a> {
         }
     }
 
-    // Generates a fuzzed encoded data for a primitive type like bool, char, u8, u16, u32, u64, u128, u256, i8, i16, i32, i64, i128, i256.
-    // Note char is not supported by scale codec
+    // Generates a fuzzed encoded data for a primitive type like bool, char, u8, u16, u32,
+    // u64, u128, u256, i8, i16, i32, i64, i128, i256. Note char is not supported by
+    // scale codec
     fn generate_primitive(
         &self,
         fuzzer: &mut Fuzzer,
@@ -193,9 +210,11 @@ impl<'a> Generator<'a> {
             TypeDef::Composite(composite) => {
                 self.generate_compact_composite(fuzzer, &composite)
             }
-            _ => Err(anyhow::anyhow!(
-                "Compact type must be a primitive or a composite type"
-            )),
+            _ => {
+                Err(anyhow::anyhow!(
+                    "Compact type must be a primitive or a composite type"
+                ))
+            }
         }
     }
 
@@ -210,10 +229,12 @@ impl<'a> Generator<'a> {
             TypeDefPrimitive::U32 => self.generate_compact_u32(fuzzer),
             TypeDefPrimitive::U64 => self.generate_compact_u64(fuzzer),
             TypeDefPrimitive::U128 => self.generate_compact_u128(fuzzer),
-            _ => Err(anyhow::anyhow!(
-                "Compact encoding not supported for {:?}",
-                primitive
-            )),
+            _ => {
+                Err(anyhow::anyhow!(
+                    "Compact encoding not supported for {:?}",
+                    primitive
+                ))
+            }
         }
     }
 
@@ -260,7 +281,8 @@ impl<'a> Generator<'a> {
 
     #[inline(always)]
     fn generate_str(&self, fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: choose for  set of predeined strings extracted from the contract and other sources
+        // TODO: choose for  set of predeined strings extracted from the contract and
+        // other sources
         Ok(fuzzer.fuzz_str().encode())
     }
 
@@ -291,7 +313,7 @@ impl<'a> Generator<'a> {
 
     #[inline(always)]
     fn generate_u256(&self, _fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: We can encode a random u256 value
+        // TODO: We can encode a random u256 value
         Err(anyhow::anyhow!("U256 currently not supported"))
     }
 
@@ -322,7 +344,7 @@ impl<'a> Generator<'a> {
 
     #[inline(always)]
     fn generate_i256(&self, _fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: We can encode a random i256 value
+        // TODO: We can encode a random i256 value
         Err(anyhow::anyhow!("I256 currently not supported"))
     }
 }
@@ -334,8 +356,13 @@ mod tests {
     use super::*;
     use drink::ContractBundle;
     use scale_info::{
-        build::{Fields, Variants},
-        Path, PortableRegistryBuilder, Type,
+        build::{
+            Fields,
+            Variants,
+        },
+        Path,
+        PortableRegistryBuilder,
+        Type,
     };
     use std::collections::HashSet;
 
@@ -486,7 +513,8 @@ mod tests {
 
     #[test]
     fn test_generate() {
-        // A rather big unittest that tests we generate all possible new() calls in the flipper contract
+        // A rather big unittest that tests we generate all possible new() calls in the
+        // flipper contract
         let contract_path = "./test-contracts/flipper/target/ink/flipper.contract";
         let bundle = ContractBundle::load(contract_path).unwrap();
         let ink_project = bundle.transcoder.metadata();

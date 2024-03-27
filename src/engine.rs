@@ -1,25 +1,56 @@
-use crate::config::Config;
-use crate::fuzzer::Fuzzer;
-use crate::generator::Generator;
-use crate::types::{AccountId, Balance, CodeHash, Hashing, TraceHash};
+use crate::{
+    config::Config,
+    fuzzer::Fuzzer,
+    generator::Generator,
+    types::{
+        AccountId,
+        Balance,
+        CodeHash,
+        Hashing,
+        TraceHash,
+    },
+};
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{
+    anyhow,
+    Ok,
+    Result,
+};
 use drink::{
     frame_support::sp_runtime::traits::Hash as HashTrait,
     pallet_contracts::{
-        AddressGenerator, DefaultAddressGenerator, Determinism, ExecReturnValue,
+        AddressGenerator,
+        DefaultAddressGenerator,
+        Determinism,
+        ExecReturnValue,
     },
     runtime::MinimalRuntime,
     sandbox::Snapshot,
-    session::{contract_transcode::Value, Session},
+    session::{
+        contract_transcode::Value,
+        Session,
+    },
     ContractBundle,
 };
 
-use log::{debug, info};
-use scale_info::{form::PortableForm, TypeDef};
+use log::{
+    debug,
+    info,
+};
+use scale_info::{
+    form::PortableForm,
+    TypeDef,
+};
 use std::{
-    collections::{HashMap, HashSet},
-    hash::{DefaultHasher, Hash as StdHash, Hasher},
+    collections::{
+        HashMap,
+        HashSet,
+    },
+    hash::{
+        DefaultHasher,
+        Hash as StdHash,
+        Hasher,
+    },
     path::PathBuf,
 };
 
@@ -158,7 +189,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    //This should generate a random account id from the set of potential callers
+    // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
             .choice(&self.config.accounts)
@@ -218,7 +249,7 @@ impl Engine {
             if self.is_property(spec.label()) {
                 self.properties.insert(selector);
             }
-            //TODO: configure if we must use messages that are marked as non mutating
+            // TODO: configure if we must use messages that are marked as non mutating
             if !self.config.only_mutable || spec.mutates() {
                 self.messages.insert(selector);
             }
@@ -230,7 +261,7 @@ impl Engine {
         info!("Loading contract from {:?}", contract_path);
         let contract = ContractBundle::load(&contract_path)?;
 
-        //TODO: fix callers
+        // TODO: fix callers
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
         let mut runtime_fuzzer = Self {
             // Contract Info
@@ -363,7 +394,8 @@ impl Engine {
         session: &mut Session<MinimalRuntime>,
         message: &Message,
     ) -> Result<ExecReturnValue> {
-        //TODO: This result has to be checked for reverts. In the flags field we can find the revert flag
+        // TODO: This result has to be checked for reverts. In the flags field we can find
+        // the revert flag
         info!("Sending message with data {:?}", message);
         let result = session
             .sandbox()
@@ -410,7 +442,8 @@ impl Engine {
         let contract_address = trace.contract();
 
         // Properties should not affect the state
-        // We save a snapshot before the properties so we can restore it later. Effectively a dry-run
+        // We save a snapshot before the properties so we can restore it later.
+        // Effectively a dry-run
         let checkpoint = session.sandbox().take_snapshot();
         let properties = self.properties.clone();
         for property in properties.iter() {
@@ -462,7 +495,7 @@ impl Engine {
                             }
                         }
                     }
-                    //println!("Property failed at trace {:?}", trace);
+                    // println!("Property failed at trace {:?}", trace);
                     anyhow::bail!("Property check failed");
                 }
             }
@@ -475,7 +508,8 @@ impl Engine {
         let start_time = std::time::Instant::now();
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
 
-        //FIXME: Aca esta el error, se esta pasando la session modificada a cada instancia del run
+        // FIXME: Aca esta el error, se esta pasando la session modificada a cada
+        // instancia del run
         for _ in 0..max_iterations {
             let r = self.run(&mut fuzzer);
             println!("Result: {:?}", r);
@@ -515,7 +549,8 @@ impl Engine {
         };
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        //  Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
+        //  Deploy the main contract to be fuzzed using a random constructor with fuzzed
+        // argumets
         let constructor_selector = fuzzer.choice(&self.constructors).unwrap();
         let constructor =
             self.generate_constructor(fuzzer, constructor_selector, Default::default())?;
@@ -537,7 +572,8 @@ impl Engine {
                     debug!("The current state is not yet materialized in the session, restoring current state.");
                     session.sandbox().restore_snapshot(snapshot.clone());
                 };
-                // The current state is already in the session. Next step needs not to load it from the `current_state`
+                // The current state is already in the session. Next step needs not to
+                // load it from the `current_state`
                 current_state = None;
 
                 // Execute the action
@@ -581,7 +617,8 @@ impl Engine {
                         debug!("At iteration {}, the current state is not yet materialized in the session, restoring current state.", i);
                         session.sandbox().restore_snapshot(snapshot.clone());
                     }
-                    // The current state is already in the session. Next step needs not to load it from the `current_state`
+                    // The current state is already in the session. Next step needs not to
+                    // load it from the `current_state`
                     current_state = None;
 
                     // Execute the action
@@ -596,7 +633,8 @@ impl Engine {
                     // If it did not revert
                     self.check_properties(fuzzer, &mut session, &trace)?;
 
-                    // If the execution returned Ok(()) then store the new state in the cache
+                    // If the execution returned Ok(()) then store the new state in the
+                    // cache
                     self.snapshot_cache
                         .insert(trace.hash(), session.sandbox().take_snapshot());
                 }
@@ -610,7 +648,7 @@ impl Engine {
 mod tests {
     use super::*;
 
-    //test that the hash of two FuzzTraces are equal
+    // test that the hash of two FuzzTraces are equal
     #[test]
     fn test_hash_trace() {
         let caller = AccountId::new([0; 32]);
