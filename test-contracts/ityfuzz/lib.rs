@@ -3,7 +3,7 @@
 #[ink::contract]
 mod ityfuzz {
 
-    const BUG_VALUE: u128 = 2;
+    const BUG_VALUE: u128 = 15;
 
     #[ink(storage)]
     pub struct Ityfuzz {
