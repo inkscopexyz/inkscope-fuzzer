@@ -37,6 +37,7 @@ use log::{
     debug,
     info,
 };
+use parity_scale_codec::Encode;
 use scale_info::{
     form::PortableForm,
     TypeDef,
@@ -132,7 +133,7 @@ struct Message {
     input: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Trace {
     deploy: Deploy,
     messages: Vec<Message>,
@@ -438,7 +439,8 @@ impl Engine {
         fuzzer: &mut Fuzzer,
         session: &mut Session<MinimalRuntime>,
         trace: &Trace,
-    ) -> Result<()> {
+    ) -> Result<Vec<Message>> {
+        let mut failed_properties = vec![];
         let contract_address = trace.contract();
 
         // Properties should not affect the state
@@ -463,18 +465,43 @@ impl Engine {
                 let property_message =
                     self.generate_message(fuzzer, property, &contract_address)?;
                 let result = self.execute_message(session, &property_message);
-                let failed = match result {
-                    Err(e) => {
-                        debug!("Property check failed: {:?}", e);
-                        true
-                    }
-                    Result::Ok(result) => result.data == vec![0, 0],
-                };
-                session.sandbox().restore_snapshot(checkpoint.clone());
+                assert_eq!(
+                    vec![0, 0],
+                    std::result::Result::<bool, ()>::Ok(false).encode()
+                );
 
-                // Property must return 0, 1 always otherwise it is a broken property
+                // A property is considered failed if the result of calling the property
+                // is Ok(false)
+                let failed = match result {
+                    Err(_) => false,
+                    Result::Ok(result) => {
+                        result.data == std::result::Result::<bool, ()>::Ok(false).encode()
+                    }
+                };
+
                 if failed {
+                    failed_properties.push(property_message);
+                }
+
+                session.sandbox().restore_snapshot(checkpoint.clone());
+            }
+        }
+
+        Ok(failed_properties)
+    }
+
+    pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()> {
+        let start_time = std::time::Instant::now();
+        let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
+
+        for _ in 0..max_iterations {
+            match self.run(&mut fuzzer)? {
+                Some((trace, failed_properties)) => {
+                    // Fail fast if a property fails
+
                     println!("Property check failed");
+
+                    // Contract Deployment
                     match self.decode_deploy(&trace.deploy.data) {
                         Err(_e) => {
                             println!("Raw deploy: {:?}", &trace.deploy.data);
@@ -484,7 +511,7 @@ impl Engine {
                         }
                     }
 
-                    // trace?
+                    // Messages
                     for message in trace.messages.iter() {
                         match self.decode_message(&message.input) {
                             Err(_e) => {
@@ -495,24 +522,24 @@ impl Engine {
                             }
                         }
                     }
-                    // println!("Property failed at trace {:?}", trace);
-                    anyhow::bail!("Property check failed");
+
+                    // Failed properties
+                    for message in failed_properties.iter() {
+                        match self.decode_message(&message.input) {
+                            Err(_e) => {
+                                println!("Raw message: {:?}", &message.input);
+                            }
+                            Result::Ok(x) => {
+                                println!("Decoded message: {:?}", x);
+                            }
+                        }
+                    }
+                    break;
+                }
+                None => {
+                    println!("No properties failed");
                 }
             }
-        }
-
-        Ok(())
-    }
-
-    pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()> {
-        let start_time = std::time::Instant::now();
-        let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
-
-        // FIXME: Aca esta el error, se esta pasando la session modificada a cada
-        // instancia del run
-        for _ in 0..max_iterations {
-            let r = self.run(&mut fuzzer);
-            println!("Result: {:?}", r);
         }
         println!("Elapsed time: {:?}", start_time.elapsed());
         Ok(())
@@ -531,7 +558,7 @@ impl Engine {
     //     Ok(())
     // }
 
-    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<()> {
+    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<(Trace, Vec<Message>)>> {
         debug!("Starting run");
         let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
 
@@ -586,7 +613,13 @@ impl Engine {
                 };
 
                 // If it did not revert
-                self.check_properties(fuzzer, &mut session, &trace)?;
+                let failed_properties =
+                    self.check_properties(fuzzer, &mut session, &trace)?;
+
+                if !failed_properties.is_empty() {
+                    println!("Failed properties: {:?}", failed_properties);
+                    return Ok(Some((trace, failed_properties)));
+                }
 
                 // If the execution went ok then store the new state in the cache
                 self.snapshot_cache
@@ -632,7 +665,12 @@ impl Engine {
                     };
 
                     // If it did not revert
-                    self.check_properties(fuzzer, &mut session, &trace)?;
+                    let failed_properties =
+                        self.check_properties(fuzzer, &mut session, &trace)?;
+                    if !failed_properties.is_empty() {
+                        println!("Failed properties: {:?}", failed_properties);
+                        return Ok(Some((trace, failed_properties)));
+                    }
 
                     // If the execution returned Ok(()) then store the new state in the
                     // cache
@@ -641,7 +679,7 @@ impl Engine {
                 }
             };
         }
-        Ok(())
+        Ok(None)
     }
 }
 
