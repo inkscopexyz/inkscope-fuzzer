@@ -27,7 +27,10 @@ use drink::{
     runtime::MinimalRuntime,
     sandbox::Snapshot,
     session::{
-        contract_transcode::Value,
+        contract_transcode::{
+            Map,
+            Value,
+        },
         Session,
     },
     ContractBundle,
@@ -424,64 +427,6 @@ impl Engine {
         Ok(result)
     }
 
-    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_message(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_constructor(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
-        for failed_trace in &campaign_result.failed_traces {
-            println!("Property check failed");
-
-            // Contract Deployment
-            match self.decode_deploy(&failed_trace.trace.deploy.data) {
-                Err(_e) => {
-                    println!("Raw deploy: {:?}", &failed_trace.trace.deploy.data);
-                }
-                Result::Ok(x) => {
-                    println!("Decoded deploy: {:?}", x);
-                }
-            }
-
-            // Messages
-            for message in failed_trace.trace.messages.iter() {
-                match self.decode_message(&message.input) {
-                    Err(_e) => {
-                        println!("Raw message: {:?}", &message.input);
-                    }
-                    Result::Ok(x) => {
-                        println!("Decoded message: {:?}", x);
-                    }
-                }
-            }
-
-            // Failed properties
-            for message in failed_trace.failed_properties.iter() {
-                match self.decode_message(&message.input) {
-                    Err(_e) => {
-                        println!("Raw message: {:?}", &message.input);
-                    }
-                    Result::Ok(x) => {
-                        println!("Decoded message: {:?}", x);
-                    }
-                }
-            }
-        }
-    }
-
     // Error if a property fail
     fn check_properties(
         &self,
@@ -539,12 +484,10 @@ impl Engine {
         Ok(failed_properties)
     }
 
-    pub fn run_campaign(
-        &mut self,
-    ) -> Result<CampaignResult> {
-        let max_iterations= self.config.max_rounds;
+    pub fn run_campaign(&mut self) -> Result<CampaignResult> {
+        let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
-        
+
         let start_time = std::time::Instant::now();
         let mut failed_traces = vec![];
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
@@ -635,7 +578,6 @@ impl Engine {
                     self.check_properties(fuzzer, &mut session, &trace)?;
 
                 if !failed_properties.is_empty() {
-                    println!("Failed properties: {:?}", failed_properties);
                     return Ok(Some(FailedTrace {
                         trace,
                         failed_properties,
@@ -690,7 +632,6 @@ impl Engine {
                     let failed_properties =
                         self.check_properties(fuzzer, &mut session, &trace)?;
                     if !failed_properties.is_empty() {
-                        println!("Failed properties: {:?}", failed_properties);
                         return Ok(Some(FailedTrace {
                             trace,
                             failed_properties,
@@ -705,6 +646,103 @@ impl Engine {
             };
         }
         Ok(None)
+    }
+
+    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
+        let output = Output::new(&self.contract);
+        output.print_campaign_result(&campaign_result);
+    }
+}
+
+pub struct Output<'a> {
+    contract: &'a ContractBundle,
+}
+
+impl<'a> Output<'a> {
+    pub fn new(contract: &'a ContractBundle) -> Self {
+        Self { contract }
+    }
+    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
+        let decoded = self
+            .contract
+            .transcoder
+            .decode_contract_message(&mut data.as_slice())
+            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
+        Ok(decoded)
+    }
+
+    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
+        let decoded = self
+            .contract
+            .transcoder
+            .decode_contract_constructor(&mut data.as_slice())
+            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
+        Ok(decoded)
+    }
+
+    fn print_value(&self, value: &Value) {
+        match value {
+            Value::Map(map) => {
+                print!("{}(", map.ident().unwrap());
+                for (n, (_name, value)) in map.iter().enumerate() {
+                    if n != 0 {
+                        print!(", ");
+                    }
+                    self.print_value(value);
+                }
+                print!(")");
+            }
+            _ => {
+                print!("{:?}", value);
+            }
+        }
+    }
+
+    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
+        for failed_trace in &campaign_result.failed_traces {
+            println!("Property check failed ❌");
+
+            // Contract Deployment
+            match self.decode_deploy(&failed_trace.trace.deploy.data) {
+                Err(_e) => {
+                    println!("Raw deploy: {:?}", &failed_trace.trace.deploy.data);
+                }
+                Result::Ok(x) => {
+                    print!("  Deploy: ",);
+                    self.print_value(&x);
+                    println!();
+                }
+            }
+
+            // Messages
+            for (idx, message) in failed_trace.trace.messages.iter().enumerate() {
+                print!("  Message{}: ", idx);
+                match self.decode_message(&message.input) {
+                    Err(_e) => {
+                        println!("Raw message: {:?}", &message.input);
+                    }
+                    Result::Ok(x) => {
+                        print!("  Deploy: ",);
+                        self.print_value(&x);
+                        println!();
+                    }
+                }
+            }
+
+            // Failed properties
+            for message in failed_trace.failed_properties.iter() {
+                match self.decode_message(&message.input) {
+                    Err(_e) => {
+                        println!("Raw message: {:?}", &message.input);
+                    }
+                    Result::Ok(x) => {
+                        print!("  Property: ",);
+                        self.print_value(&x);
+                        println!();
+                    }
+                }
+            }
+        }
     }
 }
 
