@@ -1,31 +1,57 @@
-use crate::types::{AccountId, Balance, CodeHash, Hashing, TraceHash};
-use crate::config::Config;
-use crate::fuzzer::Fuzzer;
-use crate::arguments::ArgumentsGenerator;
-use crate::constants::Constants;
+use crate::{
+    config::Config,
+    fuzzer::Fuzzer,
+    generator::Generator,
+    types::{
+        AccountId,
+        Balance,
+        CodeHash,
+        Hashing,
+        TraceHash,
+    },
+};
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{
+    anyhow,
+    Ok,
+    Result,
+};
 use drink::{
-    contracts_api,
     frame_support::sp_runtime::traits::Hash as HashTrait,
     pallet_contracts::{
-        AddressGenerator, DefaultAddressGenerator, Determinism, ExecReturnValue,
+        AddressGenerator,
+        DefaultAddressGenerator,
+        Determinism,
+        ExecReturnValue,
     },
     runtime::MinimalRuntime,
     sandbox::Snapshot,
-    session::{contract_transcode::Value, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
+    session::{
+        contract_transcode::Value,
+        Session,
+    },
     ContractBundle,
 };
 
-use clap::{Args, Parser, Subcommand};
-use log::{debug, info};
-use rayon::prelude::*;
-use scale_info::{form::PortableForm, TypeDef};
+use log::{
+    debug,
+    info,
+};
+use scale_info::{
+    form::PortableForm,
+    TypeDef,
+};
 use std::{
-    collections::{HashMap, HashSet},
-    hash::{DefaultHasher, Hash as StdHash, Hasher},
-    path::{Path, PathBuf},
-    thread,
+    collections::{
+        HashMap,
+        HashSet,
+    },
+    hash::{
+        DefaultHasher,
+        Hash as StdHash,
+        Hasher,
+    },
+    path::PathBuf,
 };
 
 // Our own copy of method information. The selector is used as the key in the hashmap
@@ -35,6 +61,7 @@ struct MethodInfo {
     payable: bool,
     constructor: bool,
 }
+
 impl MethodInfo {
     fn new(
         arguments: Vec<TypeDef<PortableForm>>,
@@ -51,72 +78,54 @@ impl MethodInfo {
     }
 }
 
-
-#[derive(StdHash, Debug)]
-enum FuzzerCall {
-    Deploy(FuzzerDeploy),
-    Message(FuzzerMessage),
-}
-impl FuzzerCall {
-    fn data(&self) -> &Vec<u8> {
-        match self {
-            FuzzerCall::Deploy(deploy) => &deploy.data,
-            FuzzerCall::Message(message) => &message.input,
-        }
-    }
-
-    fn caller(&self) -> &AccountId {
-        match self {
-            FuzzerCall::Deploy(deploy) => &deploy.caller,
-            FuzzerCall::Message(message) => &message.caller,
-        }
-    }
-
-    fn endowment(&self) -> &Balance {
-        match self {
-            FuzzerCall::Deploy(deploy) => &deploy.endowment,
-            FuzzerCall::Message(message) => &message.endowment,
-        }
-    }
-
-    fn callee(&self) -> AccountId {
-        match self {
-            FuzzerCall::Deploy(deploy) => deploy.calculate_address(),
-            FuzzerCall::Message(message) => message.callee.clone(),
-        }
-    }
-}
-
 #[derive(StdHash, Debug, Clone)]
-struct FuzzerDeploy {
+struct Deploy {
     caller: AccountId,
     endowment: Balance,
     contract_bytes: Vec<u8>,
     data: Vec<u8>,
     salt: Vec<u8>,
+    code_hash: CodeHash,
+    address: AccountId,
 }
-impl FuzzerDeploy {
-    fn calculate_code_hash(&self) -> CodeHash {
-        Hashing::hash(&self.contract_bytes)
+impl Deploy {
+    pub fn new(
+        caller: AccountId,
+        endowment: Balance,
+        contract_bytes: Vec<u8>,
+        data: Vec<u8>,
+        salt: Vec<u8>,
+    ) -> Self {
+        let code_hash = Hashing::hash(&contract_bytes);
+        let address = Self::calculate_address(&caller, &code_hash, &data, &salt);
+        Self {
+            caller,
+            endowment,
+            contract_bytes,
+            data,
+            salt,
+            code_hash,
+            address,
+        }
+    }
+    fn calculate_code_hash(contract_bytes: &[u8]) -> CodeHash {
+        Hashing::hash(contract_bytes)
     }
 
-    fn calculate_address(&self) -> AccountId {
-        let caller_address = &self.caller;
-        let code_hash: CodeHash = self.calculate_code_hash();
-        let input_data = &self.data;
-        let salt = &self.salt;
-
+    fn calculate_address(
+        caller: &AccountId,
+        code_hash: &CodeHash,
+        data: &[u8],
+        salt: &[u8],
+    ) -> AccountId {
         <DefaultAddressGenerator as AddressGenerator<MinimalRuntime>>::contract_address(
-            caller_address,
-            &code_hash,
-            input_data,
-            salt,
+            caller, code_hash, data, salt,
         )
     }
 }
 
 #[derive(StdHash, Debug, Clone)]
-struct FuzzerMessage {
+struct Message {
     caller: AccountId,
     callee: AccountId,
     endowment: Balance,
@@ -124,62 +133,42 @@ struct FuzzerMessage {
 }
 
 #[derive(Debug)]
-struct FuzzerTrace {
-    messages: Vec<FuzzerCall>,
-    contract: Option<AccountId>,
+struct Trace {
+    deploy: Deploy,
+    messages: Vec<Message>,
 }
 
-impl FuzzerTrace {
-    pub fn new() -> Self {
+impl Trace {
+    pub fn new(deploy: Deploy) -> Self {
         Self {
+            deploy,
             messages: vec![],
-            contract: None,
         }
     }
-    pub fn push(&mut self, message: FuzzerCall) -> Result<()> {
-        if self.messages.is_empty() {
-            //Force That the first FuzzerCall to be a deployment
-            if let FuzzerCall::Message(_m) = message {
-                anyhow::bail!("First call must be a deployment")
-            }
-        }
+
+    // This function should be used to push a new Message to the trace
+    pub fn push(&mut self, message: Message) {
         self.messages.push(message);
-        if self.messages.len() == 1 {
-            self.contract = match self.messages.first() {
-                Some(deploy) => match deploy {
-                    FuzzerCall::Deploy(deploy) => Some(deploy.calculate_address()),
-                    FuzzerCall::Message(_) => {
-                        anyhow::bail!("Trace must start with a deploy")
-                    }
-                },
-                None => anyhow::bail!("No deploys to execute"),
-            };
-        }
-
-        Ok(())
     }
 
-    pub fn hash(&self) -> TraceHash {        
+    pub fn hash(&self) -> TraceHash {
         let mut hasher = DefaultHasher::new();
+        self.deploy.hash(&mut hasher);
         self.messages.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn contract(&self) -> Result<AccountId> {
-        match &self.contract {
-            Some(contract) => Ok(contract.to_owned()),
-            None => anyhow::bail!("Contract not set yet."),
-        }
+    pub fn contract(&self) -> AccountId {
+        self.deploy.address.clone()
     }
 
-    pub fn last(&self) -> Result<&FuzzerCall> {
+    pub fn last_message(&self) -> Result<&Message> {
         match self.messages.last() {
-            Some(call) => Ok(call),
-            None => anyhow::bail!("No calls to execute"),
+            Some(message) => Ok(message),
+            None => Err(anyhow!("No messages in the trace")),
         }
     }
 }
-
 
 pub struct Engine {
     // Contract Info
@@ -200,7 +189,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    //This should generate a random account id from the set of potential callers
+    // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
             .choice(&self.config.accounts)
@@ -260,7 +249,7 @@ impl Engine {
             if self.is_property(spec.label()) {
                 self.properties.insert(selector);
             }
-            //TODO: configure if we must use messages that are marked as non mutating
+            // TODO: configure if we must use messages that are marked as non mutating
             if !self.config.only_mutable || spec.mutates() {
                 self.messages.insert(selector);
             }
@@ -272,7 +261,7 @@ impl Engine {
         info!("Loading contract from {:?}", contract_path);
         let contract = ContractBundle::load(&contract_path)?;
 
-        //TODO: fix callers
+        // TODO: fix callers
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
         let mut runtime_fuzzer = Self {
             // Contract Info
@@ -297,7 +286,7 @@ impl Engine {
 
     fn generate_basic(
         &self,
-        mut fuzzer: &mut Fuzzer,
+        fuzzer: &mut Fuzzer,
         selector: &[u8; 4],
     ) -> Result<(AccountId, Vec<u8>, Balance)> {
         let method_info = match self.method_info.get(selector) {
@@ -305,11 +294,8 @@ impl Engine {
             None => anyhow::bail!("No arguments for the selected constructor"),
         };
         let is_payable = method_info.payable;
-        let generator = ArgumentsGenerator::new(
-            self.contract.transcoder.metadata().registry(),
-            &method_info.arguments,
-        );
-        let mut encoded_arguments = generator.generate(fuzzer)?;
+        let generator = Generator::new(self.contract.transcoder.metadata().registry());
+        let mut encoded_arguments = generator.generate(fuzzer, &method_info.arguments)?;
 
         let caller = self.generate_caller(fuzzer);
         // Send endowment only if the constructor is marked as payable
@@ -332,15 +318,15 @@ impl Engine {
         fuzzer: &mut Fuzzer,
         selector: &[u8; 4],
         salt: Vec<u8>,
-    ) -> Result<FuzzerDeploy> {
+    ) -> Result<Deploy> {
         let (caller, encoded, endowment) = self.generate_basic(fuzzer, selector)?;
-        Ok(FuzzerDeploy {
+        Ok(Deploy::new(
             caller,
             endowment,
-            contract_bytes: self.contract.wasm.clone(),
-            data: encoded,
+            self.contract.wasm.clone(),
+            encoded,
             salt,
-        })
+        ))
     }
 
     // Generates a fuzzed message to be appended in the trace
@@ -349,10 +335,10 @@ impl Engine {
         fuzzer: &mut Fuzzer,
         message_selector: &[u8; 4],
         callee: &AccountId,
-    ) -> Result<FuzzerMessage> {
+    ) -> Result<Message> {
         let (caller, encoded, endowment) =
             self.generate_basic(fuzzer, message_selector)?;
-        Ok(FuzzerMessage {
+        Ok(Message {
             caller,
             callee: callee.clone(),
             endowment,
@@ -382,7 +368,7 @@ impl Engine {
     fn execute_deploy(
         &self,
         session: &mut Session<MinimalRuntime>,
-        deploy: &FuzzerDeploy,
+        deploy: &Deploy,
     ) -> Result<ExecReturnValue> {
         info!("Deploying contract with data {:?}", deploy);
         let deployment_result = session.sandbox().deploy_contract(
@@ -406,9 +392,10 @@ impl Engine {
     fn execute_message(
         &self,
         session: &mut Session<MinimalRuntime>,
-        message: &FuzzerMessage,
+        message: &Message,
     ) -> Result<ExecReturnValue> {
-        //TODO: This result has to be checked for reverts. In the flags field we can find the revert flag
+        // TODO: This result has to be checked for reverts. In the flags field we can find
+        // the revert flag
         info!("Sending message with data {:?}", message);
         let result = session
             .sandbox()
@@ -427,52 +414,36 @@ impl Engine {
         Ok(result)
     }
 
-    // Exceutes the call on the given session
-    fn execute_call(
-        &self,
-        session: &mut Session<MinimalRuntime>,
-        call: &FuzzerCall,
-    ) -> Result<ExecReturnValue> {
-        Ok(match call {
-            FuzzerCall::Message(message) => self.execute_message(session, message)?,
-            FuzzerCall::Deploy(deploy) => self.execute_deploy(session, deploy)?,
-        })
+    fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
+        let decoded = self
+            .contract
+            .transcoder
+            .decode_contract_message(&mut data.as_slice())
+            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
+        Ok(decoded)
     }
 
-    fn decode_call(&self, call: &FuzzerCall) -> Result<Value> {
-        match call {
-            FuzzerCall::Message(message) => {
-                let decoded = self
-                    .contract
-                    .transcoder
-                    .decode_contract_message(&mut message.input.as_slice())
-                    .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
-                Ok(decoded)
-            }
-            FuzzerCall::Deploy(deploy) => {
-                let decoded = self
-                    .contract
-                    .transcoder
-                    .decode_contract_constructor(&mut deploy.data.as_slice())
-                    .map_err(|e| {
-                        anyhow::anyhow!("Error decoding constructor: {:?}", e)
-                    })?;
-                Ok(decoded)
-            }
-        }
+    fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
+        let decoded = self
+            .contract
+            .transcoder
+            .decode_contract_constructor(&mut data.as_slice())
+            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
+        Ok(decoded)
     }
 
     // Error if a property fail
     fn check_properties(
         &self,
-        mut fuzzer: &mut Fuzzer,
+        fuzzer: &mut Fuzzer,
         session: &mut Session<MinimalRuntime>,
-        trace: &FuzzerTrace,
+        trace: &Trace,
     ) -> Result<()> {
-        let contract_address = trace.contract()?;
+        let contract_address = trace.contract();
 
         // Properties should not affect the state
-        // We save a snapshot before the properties so we can restore it later. Effectively a dry-run
+        // We save a snapshot before the properties so we can restore it later.
+        // Effectively a dry-run
         let checkpoint = session.sandbox().take_snapshot();
         let properties = self.properties.clone();
         for property in properties.iter() {
@@ -504,22 +475,27 @@ impl Engine {
                 // Property must return 0, 1 always otherwise it is a broken property
                 if failed {
                     println!("Property check failed");
+                    match self.decode_deploy(&trace.deploy.data) {
+                        Err(_e) => {
+                            println!("Raw deploy: {:?}", &trace.deploy.data);
+                        }
+                        Result::Ok(x) => {
+                            println!("Decoded deploy: {:?}", x);
+                        }
+                    }
+
                     // trace?
-                    for call in trace
-                        .messages
-                        .iter()
-                        .chain(&[FuzzerCall::Message(property_message)])
-                    {
-                        match self.decode_call(call) {
+                    for message in trace.messages.iter() {
+                        match self.decode_message(&message.input) {
                             Err(_e) => {
-                                println!("Raw call: {:?}", call.data());
+                                println!("Raw message: {:?}", &message.input);
                             }
                             Result::Ok(x) => {
-                                println!("Decoded call: {:?}", x);
+                                println!("Decoded message: {:?}", x);
                             }
                         }
                     }
-                    //println!("Property failed at trace {:?}", trace);
+                    // println!("Property failed at trace {:?}", trace);
                     anyhow::bail!("Property check failed");
                 }
             }
@@ -528,12 +504,14 @@ impl Engine {
         Ok(())
     }
 
-    pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()>{
+    pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()> {
         let start_time = std::time::Instant::now();
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
-        let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
+
+        // FIXME: Aca esta el error, se esta pasando la session modificada a cada
+        // instancia del run
         for _ in 0..max_iterations {
-            let r = self.run(&mut fuzzer, &mut session);
+            let r = self.run(&mut fuzzer);
             println!("Result: {:?}", r);
         }
         println!("Elapsed time: {:?}", start_time.elapsed());
@@ -542,7 +520,7 @@ impl Engine {
     // pub fn run_campaign_concurrent(&mut self, max_iterations: usize) -> Result<()> {
     //     let num_cpus = rayon::current_num_threads();
     //     println!("Number of CPU cores: {}", num_cpus);
-    
+
     //     // Execute the main logic in parallel using Rayon
     //     (0..num_cpus).into_par_iter().for_each(|_| {
     //         if let Err(err) = self.run_campaign(1000) {
@@ -553,57 +531,33 @@ impl Engine {
     //     Ok(())
     // }
 
-    fn run(
-        &mut self,
-        mut fuzzer: &mut Fuzzer,
-        session: &mut Session<MinimalRuntime>,
-    ) -> Result<()> {
+    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<()> {
         debug!("Starting run");
-        let mut trace = FuzzerTrace::new(); // The execution trace
-        let mut current_state = None; // The current state not yet materialized in the session
+        let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
 
-        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // Initialize the state: Assigning initial budget to caller addresses
-
-        // CACHE: Check if the cache knows how to initialize the state
-        match self.snapshot_cache.get(&trace.hash()) {
-            Some(snapshot) => {
-                // The initial state is already in the cache.
-                current_state = Some(snapshot);
-                debug!("Cahe HIT: Initialization is taken from the cache");
+        // Check if the initial state is already in the cache
+        let mut current_state = match self.snapshot_cache.get(&0u64) {
+            Some(init_snapshot) => {
+                session.sandbox().restore_snapshot(init_snapshot.clone());
+                Some(init_snapshot)
             }
-            None => {
-                debug!("Cahe MISS: We need to run the initialization at least once");
-
-                // It should not be a pending current state
-                assert!(current_state.is_none());
-
-                // Execute the action: Initialize the state
-                self.initialize_state(session)?;
-
-                // If the initialization went ok then save the result in the cache so we do not need to re do
-                self.snapshot_cache.insert(
-                    trace.hash(),
-                    session.sandbox().take_snapshot(),
-                );
-
-                // No pending current state.
-                current_state = None;
+            _ => {
+                self.initialize_state(&mut session)?;
+                self.snapshot_cache
+                    .insert(0, session.sandbox().take_snapshot());
+                None
             }
         };
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        //  Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
-
+        //  Deploy the main contract to be fuzzed using a random constructor with fuzzed
+        // argumets
         let constructor_selector = fuzzer.choice(&self.constructors).unwrap();
-        let constructor = self.generate_constructor(
-            &mut fuzzer,
-            constructor_selector,
-            Default::default(),
-        )?;
+        let constructor =
+            self.generate_constructor(fuzzer, constructor_selector, Default::default())?;
 
-        // Add the deployment to the trace.
-        trace.push(FuzzerCall::Deploy(constructor))?;
+        // Start the trace with a deployment
+        let mut trace = Trace::new(constructor);
 
         // CACHE: Check we happened to choose the same constructor as a previous run
         match self.snapshot_cache.get(&trace.hash()) {
@@ -619,11 +573,12 @@ impl Engine {
                     debug!("The current state is not yet materialized in the session, restoring current state.");
                     session.sandbox().restore_snapshot(snapshot.clone());
                 };
-                // The current state is already in the session. Next step needs not to load it from the `current_state`
+                // The current state is already in the session. Next step needs not to
+                // load it from the `current_state`
                 current_state = None;
 
                 // Execute the action
-                let result = self.execute_call(session, trace.last()?)?;
+                let result = self.execute_deploy(&mut session, &trace.deploy)?;
 
                 // Bail out if execution reverted
                 if !result.flags.is_empty() {
@@ -631,31 +586,22 @@ impl Engine {
                 };
 
                 // If it did not revert
-                self.check_properties(&mut fuzzer, session, &trace)?;
+                self.check_properties(fuzzer, &mut session, &trace)?;
 
                 // If the execution went ok then store the new state in the cache
-                self.snapshot_cache.insert(
-                    trace.hash(),
-                    session.sandbox().take_snapshot(),
-                );
+                self.snapshot_cache
+                    .insert(trace.hash(), session.sandbox().take_snapshot());
             }
         };
 
         let max_txs = self.config.max_number_of_transactions;
-        let contract_address = trace.contract()?;
+        let callee = trace.contract();
         for i in 0..max_txs {
             debug!("Tx: {}/{}", i, max_txs);
 
-            let message = {
-                let message_selector = fuzzer.choice(&self.messages).unwrap();
-                let message = self.generate_message(
-                    &mut fuzzer,
-                    message_selector,
-                    &contract_address,
-                )?;
-                message.clone()
-            };
-            trace.push(FuzzerCall::Message(message))?;
+            let message_selector = fuzzer.choice(&self.messages).unwrap();
+            let message = self.generate_message(fuzzer, message_selector, &callee)?;
+            trace.push(message);
 
             // CACHE: Check we happened to choose the same trace prolog as a previous run
             match self.snapshot_cache.get(&trace.hash()) {
@@ -672,11 +618,13 @@ impl Engine {
                         debug!("At iteration {}, the current state is not yet materialized in the session, restoring current state.", i);
                         session.sandbox().restore_snapshot(snapshot.clone());
                     }
-                    // The current state is already in the session. Next step needs not to load it from the `current_state`
+                    // The current state is already in the session. Next step needs not to
+                    // load it from the `current_state`
                     current_state = None;
 
                     // Execute the action
-                    let result = self.execute_call(session, trace.last()?)?;
+                    let result =
+                        self.execute_message(&mut session, trace.last_message()?)?;
 
                     // Bail out if execution reverted
                     if !result.flags.is_empty() {
@@ -684,13 +632,12 @@ impl Engine {
                     };
 
                     // If it did not revert
-                    self.check_properties(&mut fuzzer, session, &trace)?;
+                    self.check_properties(fuzzer, &mut session, &trace)?;
 
-                    // If the execution returned Ok(()) then store the new state in the cache
-                    self.snapshot_cache.insert(
-                        trace.hash(),
-                        session.sandbox().take_snapshot(),
-                    );
+                    // If the execution returned Ok(()) then store the new state in the
+                    // cache
+                    self.snapshot_cache
+                        .insert(trace.hash(), session.sandbox().take_snapshot());
                 }
             };
         }
@@ -698,40 +645,38 @@ impl Engine {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    //test that the hash of two FuzzTraces are equal
+    // test that the hash of two FuzzTraces are equal
     #[test]
     fn test_hash_trace() {
-        let mut trace1 = FuzzerTrace::new();
-        let mut trace2 = FuzzerTrace::new();
-        let deploy = FuzzerDeploy {
-            caller: AccountId::new([0; 32]),
-            endowment: 0,
-            contract_bytes: vec![0, 1, 2, 3],
-            data: vec![4, 5, 6, 7],
-            salt: vec![8, 9, 10, 11],
-        };
-        let message = FuzzerMessage {
+        let caller = AccountId::new([0; 32]);
+        let endowment = 0;
+        let contract_bytes = vec![0, 1, 2, 3];
+        let data = vec![4, 5, 6, 7];
+        let salt = vec![8, 9, 10, 11];
+
+        let deploy = Deploy::new(caller, endowment, contract_bytes, data, salt);
+        let mut trace1 = Trace::new(deploy.clone());
+        let mut trace2 = Trace::new(deploy);
+
+        let message = Message {
             caller: AccountId::new([0; 32]),
             callee: AccountId::new([1; 32]),
             endowment: 0,
             input: vec![0, 1, 2, 3],
         };
-        let message_identical = FuzzerMessage {
+        let message_identical = Message {
             caller: AccountId::new([0; 32]),
             callee: AccountId::new([1; 32]),
             endowment: 0,
             input: vec![0, 1, 2, 3],
         };
 
-        trace1.push(FuzzerCall::Deploy(deploy.clone())).unwrap();
-        trace1.push(FuzzerCall::Message(message)).unwrap();
-        trace2.push(FuzzerCall::Deploy(deploy)).unwrap();
-        trace2.push(FuzzerCall::Message(message_identical)).unwrap();
+        trace1.push(message);
+        trace2.push(message_identical);
         assert_eq!(&trace1.hash(), &trace2.hash());
     }
 }

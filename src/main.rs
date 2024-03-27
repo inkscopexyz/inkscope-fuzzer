@@ -1,28 +1,23 @@
-mod arguments;
+mod cli;
 mod config;
 mod constants;
-mod fuzzer;
-mod types;
 mod engine;
-
+mod fuzzer;
+mod generator;
+mod types;
 
 use crate::config::Config;
-use std::path::PathBuf;
-use clap::{self, Parser};
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{
+    anyhow,
+    Ok,
+    Result,
+};
+use clap::{
+    self,
+    Parser,
+};
+use cli::Cli;
 use engine::Engine;
-
-
-
-#[derive(Debug, Parser)]
-struct Cli {
-    /// input file
-    #[clap(index = 1)]
-    pub contract: PathBuf,
-
-    #[arg(short, long, default_value = "config.yaml")]
-    config: PathBuf,
-}
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -33,7 +28,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Used for developement when the Config format is changed
-    //Config::default().to_yaml_file(&cli.config)?;
+    // Config::default().to_yaml_file(&cli.config)?;
     let config = Config::from_yaml_file(&cli.config).expect("failed to parse yaml file");
     let contract_path = cli.contract;
 
@@ -44,8 +39,8 @@ fn main() -> Result<()> {
 }
 
 // fn mainy() -> Result<()> {
-//     // This initializes the logging. The code uses debug! info! trace! and error! macros
-//     // You can enable the output via the environment variable RUST_LOG
+//     // This initializes the logging. The code uses debug! info! trace! and error!
+// macros     // You can enable the output via the environment variable RUST_LOG
 //     env_logger::init();
 //     let mut fuzzer = RuntimeFuzzer::new(
 //         PathBuf::from("./test-contracts/ityfuzz/target/ink/ityfuzz.contract"),
@@ -88,7 +83,8 @@ fn main() -> Result<()> {
 
 //     // Load contract from file
 //     let contract_path = Path::new("./flipper/target/ink/flipper.contract");
-//     let contract = ContractBundle::load(contract_path).expect("Failed to load contract");
+//     let contract = ContractBundle::load(contract_path).expect("Failed to load
+// contract");
 
 //     session.deploy_bundle(contract.clone(), "new", &["true"], NO_SALT, NO_ENDOWMENT)?;
 
@@ -107,4 +103,3 @@ fn main() -> Result<()> {
 
 //     Ok(())
 // }
-

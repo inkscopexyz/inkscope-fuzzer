@@ -1,11 +1,23 @@
 use anyhow::Result;
-use drink::{frame_support::sp_runtime::traits::Bounded, Weight};
-use serde::{Deserialize, Serialize};
-use std::{fs::File, path::Path};
+use drink::{
+    frame_support::sp_runtime::traits::Bounded,
+    Weight,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use std::{
+    fs::File,
+    path::Path,
+};
 
 use crate::{
-    constants::{self, Constants},
-    types::{AccountId, Balance},
+    constants::Constants,
+    types::{
+        AccountId,
+        Balance,
+    },
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,13 +40,15 @@ pub struct Config {
     // Max gas limit for a transaction
     pub gas_limit: Weight,
 
-    // Prefix for the property name. This is used to identify the property from normal messages
+    // Prefix for the property name. This is used to identify the property from normal
+    // messages
     pub property_prefix: String,
 
-    // In case the property takes arguments, how many rounds to spend fuzzing the arguments
+    // In case the property takes arguments, how many rounds to spend fuzzing the
+    // arguments
     pub fuzz_property_max_rounds: usize,
 
-    //Initial set of constant values to use in the fuzzing
+    // Initial set of constant values to use in the fuzzing
     pub constants: Constants,
 }
 impl Config {
@@ -65,7 +79,7 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        //TODO! Do it right
+        // TODO! Do it right
         // let default_callers: Vec<AccountId> = vec![
         //     "Alice".into(),
         //     "Bob".into(),

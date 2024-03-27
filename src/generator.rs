@@ -1,28 +1,35 @@
 use crate::fuzzer::Fuzzer;
-use anyhow::{Ok, Result};
-use parity_scale_codec::{Compact as ScaleCompact, Encode};
-use scale_info::PortableRegistry;
+use anyhow::{
+    Ok,
+    Result,
+};
+use parity_scale_codec::{
+    Compact as ScaleCompact,
+    Encode,
+};
 use scale_info::{
-    form::PortableForm, TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefCompact,
-    TypeDefComposite, TypeDefPrimitive, TypeDefSequence, TypeDefTuple, TypeDefVariant,
+    form::PortableForm,
+    PortableRegistry,
+    TypeDef,
+    TypeDefArray,
+    TypeDefBitSequence,
+    TypeDefCompact,
+    TypeDefComposite,
+    TypeDefPrimitive,
+    TypeDefSequence,
+    TypeDefTuple,
+    TypeDefVariant,
 };
 
 // Used to fuzz generate a single input data for a constructor or a message
-pub struct ArgumentsGenerator<'a> {
+pub struct Generator<'a> {
     registry: &'a PortableRegistry,
-    pub arguments: &'a Vec<TypeDef<PortableForm>>,
 }
 
 // Input Fuzzy Generator for a Constructor or Message arguments
-impl<'a> ArgumentsGenerator<'a> {
-    pub fn new(
-        registry: &'a PortableRegistry,
-        arguments: &'a Vec<TypeDef<PortableForm>>,
-    ) -> Self {
-        Self {
-            registry,
-            arguments,
-        }
+impl<'a> Generator<'a> {
+    pub fn new(registry: &'a PortableRegistry) -> Self {
+        Self { registry }
     }
 
     #[inline(always)]
@@ -34,11 +41,15 @@ impl<'a> ArgumentsGenerator<'a> {
     }
 
     // Generates a fuzzed arguments encoded input data
-    pub fn generate(&self, fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
+    pub fn generate(
+        &self,
+        fuzzer: &mut Fuzzer,
+        arguments: &Vec<TypeDef<PortableForm>>,
+    ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
-        for type_def in self.arguments {
-            //let type_def = self.get_typedef(arg.ty().ty().id)?;
-            let mut arg_encoded = self.generate_argument(fuzzer, &type_def)?;
+        for type_def in arguments {
+            // let type_def = self.get_typedef(arg.ty().ty().id)?;
+            let mut arg_encoded = self.generate_argument(fuzzer, type_def)?;
             encoded.append(&mut arg_encoded);
         }
         Ok(encoded)
@@ -64,7 +75,8 @@ impl<'a> ArgumentsGenerator<'a> {
         }
     }
 
-    // Generates a fuzzed encoded data for  composite type, consisting of either named (struct) or unnamed (tuple struct) fields
+    // Generates a fuzzed encoded data for  composite type, consisting of either named
+    // (struct) or unnamed (tuple struct) fields
     fn generate_composite(
         &self,
         fuzzer: &mut Fuzzer,
@@ -80,14 +92,15 @@ impl<'a> ArgumentsGenerator<'a> {
     }
 
     // Generates a fuzzed encoded data for a sized array type like [u8;32].
-    // The size is prestablished in the type definition and does not appear in the encoding
+    // The size is prestablished in the type definition and does not appear in the
+    // encoding
     fn generate_array(
         &self,
         fuzzer: &mut Fuzzer,
         array: &TypeDefArray<PortableForm>,
     ) -> Result<Vec<u8>> {
         let mut encoded = Vec::new();
-        //No length is included in the encoding as it is known at decoding
+        // No length is included in the encoding as it is known at decoding
         let param_type_def = self.get_typedef(array.type_param.id)?;
         for _i in 0..array.len {
             let mut param_encoded = self.generate_argument(fuzzer, &param_type_def)?;
@@ -155,8 +168,9 @@ impl<'a> ArgumentsGenerator<'a> {
         }
     }
 
-    // Generates a fuzzed encoded data for a primitive type like bool, char, u8, u16, u32, u64, u128, u256, i8, i16, i32, i64, i128, i256.
-    // Note char is not supported by scale codec
+    // Generates a fuzzed encoded data for a primitive type like bool, char, u8, u16, u32,
+    // u64, u128, u256, i8, i16, i32, i64, i128, i256. Note char is not supported by
+    // scale codec
     fn generate_primitive(
         &self,
         fuzzer: &mut Fuzzer,
@@ -196,9 +210,11 @@ impl<'a> ArgumentsGenerator<'a> {
             TypeDef::Composite(composite) => {
                 self.generate_compact_composite(fuzzer, &composite)
             }
-            _ => Err(anyhow::anyhow!(
-                "Compact type must be a primitive or a composite type"
-            )),
+            _ => {
+                Err(anyhow::anyhow!(
+                    "Compact type must be a primitive or a composite type"
+                ))
+            }
         }
     }
 
@@ -213,10 +229,12 @@ impl<'a> ArgumentsGenerator<'a> {
             TypeDefPrimitive::U32 => self.generate_compact_u32(fuzzer),
             TypeDefPrimitive::U64 => self.generate_compact_u64(fuzzer),
             TypeDefPrimitive::U128 => self.generate_compact_u128(fuzzer),
-            _ => Err(anyhow::anyhow!(
-                "Compact encoding not supported for {:?}",
-                primitive
-            )),
+            _ => {
+                Err(anyhow::anyhow!(
+                    "Compact encoding not supported for {:?}",
+                    primitive
+                ))
+            }
         }
     }
 
@@ -263,7 +281,8 @@ impl<'a> ArgumentsGenerator<'a> {
 
     #[inline(always)]
     fn generate_str(&self, fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: choose for  set of predeined strings extracted from the contract and other sources
+        // TODO: choose for  set of predeined strings extracted from the contract and
+        // other sources
         Ok(fuzzer.fuzz_str().encode())
     }
 
@@ -294,7 +313,7 @@ impl<'a> ArgumentsGenerator<'a> {
 
     #[inline(always)]
     fn generate_u256(&self, _fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: We can encode a random u256 value
+        // TODO: We can encode a random u256 value
         Err(anyhow::anyhow!("U256 currently not supported"))
     }
 
@@ -325,7 +344,7 @@ impl<'a> ArgumentsGenerator<'a> {
 
     #[inline(always)]
     fn generate_i256(&self, _fuzzer: &mut Fuzzer) -> Result<Vec<u8>> {
-        //TODO: We can encode a random i256 value
+        // TODO: We can encode a random i256 value
         Err(anyhow::anyhow!("I256 currently not supported"))
     }
 }
@@ -336,13 +355,168 @@ mod tests {
 
     use super::*;
     use drink::ContractBundle;
+    use scale_info::{
+        build::{
+            Fields,
+            Variants,
+        },
+        Path,
+        PortableRegistryBuilder,
+        Type,
+    };
     use std::collections::HashSet;
+
+    // Type IDs generated by `build_registry`.
+    const U8_TY_ID: u32 = 0;
+    const U32_TY_ID: u32 = 1;
+    const U64_TY_ID: u32 = 2;
+    const VEC_U32_TY_ID: u32 = 3;
+    const ARRAY_U32_TY_ID: u32 = 4;
+    const TUPLE_TY_ID: u32 = 5;
+    const COMPACT_TY_ID: u32 = 6;
+    const BIT_SEQ_TY_ID: u32 = 7;
+    const COMPOSITE_TY_ID: u32 = 8;
+    const VARIANT_TY_ID: u32 = 9;
+
+    fn build_registry() -> PortableRegistry {
+        let mut builder = PortableRegistryBuilder::new();
+        // Primitives
+        let u8_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U8, vec![]);
+        let u8_type_id = builder.register_type(u8_type);
+        assert_eq!(U8_TY_ID, u8_type_id);
+
+        let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
+        let u32_type_id = builder.register_type(u32_type);
+        assert_eq!(U32_TY_ID, u32_type_id);
+
+        let u64_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U64, vec![]);
+        let u64_type_id = builder.register_type(u64_type);
+        assert_eq!(U64_TY_ID, u64_type_id);
+
+        // Sequence
+        let vec_u32_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefSequence::new(u32_type_id.into()),
+            vec![],
+        );
+        let vec_u32_type_id = builder.register_type(vec_u32_type);
+        assert_eq!(VEC_U32_TY_ID, vec_u32_type_id);
+
+        // Array
+        let array_u32_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefArray::new(3, u32_type_id.into()),
+            vec![],
+        );
+        let array_u32_type_id = builder.register_type(array_u32_type);
+        assert_eq!(ARRAY_U32_TY_ID, array_u32_type_id);
+
+        // Tuple
+        let tuple_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefTuple::new_portable(vec![u32_type_id.into(), u64_type_id.into()]),
+            vec![],
+        );
+        let tuple_type_id = builder.register_type(tuple_type);
+        assert_eq!(TUPLE_TY_ID, tuple_type_id);
+
+        // Compact
+        let compact_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefCompact::new(tuple_type_id.into()),
+            vec![],
+        );
+        let compact_type_id = builder.register_type(compact_type);
+        assert_eq!(COMPACT_TY_ID, compact_type_id);
+
+        // BitSequence
+        let bit_seq_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefBitSequence::new_portable(u32_type_id.into(), u64_type_id.into()),
+            vec![],
+        );
+        let bit_seq_type_id = builder.register_type(bit_seq_type);
+        assert_eq!(BIT_SEQ_TY_ID, bit_seq_type_id);
+
+        // Composite
+        let composite_type = Type::builder_portable()
+            .path(Path::from_segments_unchecked(["MyStruct".into()]))
+            .composite(
+                Fields::named()
+                    .field_portable(|f| f.name("primitive".into()).ty(u32_type_id))
+                    .field_portable(|f| f.name("vec_of_u32".into()).ty(vec_u32_type_id)),
+            );
+        let composite_type_id = builder.register_type(composite_type);
+        assert_eq!(COMPOSITE_TY_ID, composite_type_id);
+
+        // Variant
+        let enum_type = Type::builder_portable()
+            .path(Path::from_segments_unchecked(["MyEnum".into()]))
+            .variant(
+                Variants::new()
+                    .variant("A".into(), |v| {
+                        v.index(0).fields(
+                            Fields::<PortableForm>::named()
+                                .field_portable(|f| {
+                                    f.name("primitive".into()).ty(u32_type_id)
+                                })
+                                .field_portable(|f| {
+                                    f.name("vec_of_u32".into()).ty(vec_u32_type_id)
+                                }),
+                        )
+                    })
+                    .variant_unit("B".into(), 1),
+            );
+        let enum_type_id = builder.register_type(enum_type);
+        assert_eq!(VARIANT_TY_ID, enum_type_id);
+
+        builder.finish()
+    }
+
+    #[test]
+    fn test_generate_u8() {
+        // make simple resistry with a single u8 type
+        let mut builder = PortableRegistryBuilder::new();
+        let u8_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U8, vec![]);
+        let u8_type_id = builder.register_type(u8_type);
+        let registry = builder.finish();
+
+        // build a generator for that registry
+        let generator = Generator::new(&registry);
+        // A constant fuzzer containing only 0x41 as u8 constants
+        let mut fuzzer = Fuzzer::new(
+            0,
+            Constants {
+                u8_constants: vec![0x41],
+                ..Default::default()
+            },
+        );
+
+        // get the same type we just register from the registry
+        let ty = registry.resolve(u8_type_id).unwrap().type_def.clone();
+
+        // Generate a fuzzed encoded data for it
+        let encoded = generator.generate(&mut fuzzer, &vec![ty]).unwrap();
+
+        // Encode it by hand
+        let mut raw_encoded = vec![];
+        (0x41u8).encode_to(&mut raw_encoded);
+
+        // Check that the generated encoded data is the same as the one we encoded by hand
+        assert_eq!(encoded, raw_encoded);
+    }
 
     #[test]
     fn test_generate() {
-        // A rather big unittest that tests we generate all possible new() calls in the flipper contract
+        // A rather big unittest that tests we generate all possible new() calls in the
+        // flipper contract
         let contract_path = "./test-contracts/flipper/target/ink/flipper.contract";
-        let bundle = ContractBundle::load(&contract_path).unwrap();
+        let bundle = ContractBundle::load(contract_path).unwrap();
         let ink_project = bundle.transcoder.metadata();
         let mut fuzzer = Fuzzer::new(0, Constants::default());
         let selected = ink_project
@@ -363,13 +537,13 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let generator = ArgumentsGenerator::new(ink_project.registry(), &selected);
+        let generator = Generator::new(ink_project.registry());
         // let mut generator =
         //     ArgumentsGenerator::from_label(&ink_project, &mut fuzzer, "new").unwrap();
 
         let mut corpus = HashSet::new();
         for _i in 0..100 {
-            corpus.insert(generator.generate(&mut fuzzer).unwrap());
+            corpus.insert(generator.generate(&mut fuzzer, &selected).unwrap());
         }
         assert_eq!(corpus.len(), 2);
 

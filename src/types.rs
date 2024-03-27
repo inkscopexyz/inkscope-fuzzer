@@ -1,15 +1,22 @@
 use drink::{
     frame_system,
-    runtime::{AccountIdFor, HashFor},
-    BalanceOf, MinimalRuntime,
+    runtime::{
+        AccountIdFor,
+        HashFor,
+    },
+    BalanceOf,
+    MinimalRuntime,
 };
-use ink_metadata::{ConstructorSpec, MessageSpec};
+use ink_metadata::{
+    ConstructorSpec,
+    MessageSpec,
+};
 use scale_info::form::PortableForm;
 
-//TODO: add this to drink/runtime.rs
+// TODO: add this to drink/runtime.rs
 pub type HashingFor<R> = <R as frame_system::Config>::Hashing;
 
-//This defines all the configurable types based on the current runtime: MinimalRuntime
+// This defines all the configurable types based on the current runtime: MinimalRuntime
 pub type Balance = BalanceOf<MinimalRuntime>;
 pub type AccountId = AccountIdFor<MinimalRuntime>;
 pub type Hash = HashFor<MinimalRuntime>;
