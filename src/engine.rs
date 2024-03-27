@@ -56,12 +56,12 @@ use std::{
 };
 
 pub struct CampaignResult {
-    failed_traces: Vec<FailedTrace>,
+    pub failed_traces: Vec<FailedTrace>,
 }
 
 pub struct FailedTrace {
-    trace: Trace,
-    failed_properties: Vec<Message>,
+    pub trace: Trace,
+    pub failed_properties: Vec<Message>,
 }
 
 // Our own copy of method information. The selector is used as the key in the hashmap
@@ -135,11 +135,11 @@ impl Deploy {
 }
 
 #[derive(StdHash, Debug, Clone)]
-struct Message {
+pub struct Message {
     caller: AccountId,
     callee: AccountId,
     endowment: Balance,
-    input: Vec<u8>,
+    pub input: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -424,7 +424,7 @@ impl Engine {
         Ok(result)
     }
 
-    fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
+    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
         let decoded = self
             .contract
             .transcoder
@@ -433,7 +433,7 @@ impl Engine {
         Ok(decoded)
     }
 
-    fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
+    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
         let decoded = self
             .contract
             .transcoder

@@ -148,7 +148,11 @@ mod tests {
 
     #[test]
     fn test_fuzz_str() {
-        let mut fuzzer = Fuzzer::new(0, Constants::default());
+        let constants = Constants {
+            str_constants: vec!["A".to_string(), "B".to_string()],
+            ..Default::default()
+        };
+        let mut fuzzer = Fuzzer::new(0, constants);
         let mut strings = HashSet::new();
         for _ in 0..100 {
             strings.insert(fuzzer.fuzz_str());

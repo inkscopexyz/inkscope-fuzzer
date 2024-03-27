@@ -4,6 +4,8 @@ mod constants;
 mod engine;
 mod fuzzer;
 mod generator;
+#[cfg(test)]
+mod tests;
 mod types;
 
 use crate::config::Config;
