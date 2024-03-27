@@ -535,6 +535,7 @@ impl Engine {
         debug!("Starting run");
         let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
 
+        // Check if the initial state is already in the cache
         let mut current_state = match self.snapshot_cache.get(&0u64) {
             Some(init_snapshot) => {
                 session.sandbox().restore_snapshot(init_snapshot.clone());
