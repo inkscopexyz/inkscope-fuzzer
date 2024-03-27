@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs::File, path::Path};
 
 use crate::{
-    constants::{self, Constants},
+    constants::Constants,
     types::{AccountId, Balance},
 };
 
