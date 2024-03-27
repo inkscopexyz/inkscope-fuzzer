@@ -14,7 +14,6 @@ By incorporating property-based testing through Inkscope fuzzer, developers can 
 
 Let's start with a simple example to understand how the fuzzer works.
 
-
 - Ityfuzz contract challenge
 
 ```rust
@@ -71,19 +70,99 @@ mod ityfuzz {
         }
     }
 }
-
 ```
 
-Compile the test contracts
+In this contract, the `incr` and `decr` functions increment and decrement the `counter` variable based on the condition compared to the provided value, respectively. The `buggy` function sets the `bug_flag` variable to false if the `counter` variable is equal to `BUG_VALUE`.
+
+To test the contract we will write a property as an ink! message that checks if the `bug_flag` variable is true. Note that this message is wrapped in a `#[cfg(feature = "fuzz-testing")]` attribute to avoid compiling it in the final contract. In order for this to work, the `fuzz-testing` feature must be enabled in the `Cargo.toml` file.
+
+```toml
+[features]
+...
+fuzz-testing = []
+```
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std, no_main)]
+
+#[ink::contract]
+mod ityfuzz {
+
+    const BUG_VALUE: u128 = 15;
+
+    #[ink(storage)]
+    pub struct Ityfuzz {
+        counter: u128,
+        bug_flag: bool,
+    }
+
+    impl Ityfuzz {
+        #[ink(constructor)]
+        pub fn default() -> Self {
+            Self {
+                counter: 0,
+                bug_flag: true,
+            }
+        }
+
+        #[ink(message)]
+        pub fn incr(&mut self, value: u128) -> Result<(), ()> {
+            if value > self.counter {
+                return Err(());
+            }
+            self.counter = self.counter.checked_add(1).ok_or(())?;
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn decr(&mut self, value: u128) -> Result<(), ()> {
+            if value < self.counter {
+                return Err(());
+            }
+            self.counter = self.counter.checked_sub(1).ok_or(())?;
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn buggy(&mut self) {
+            if self.counter == BUG_VALUE {
+                self.bug_flag = false;
+            }
+        }
+
+        #[ink(message)]
+        pub fn get_counter(&self) -> u128 {
+            self.counter
+        }
+    }
+
+    #[cfg(feature = "fuzz-testing")]
+    #[ink(impl)]
+    impl Ityfuzz {
+        #[cfg(feature = "fuzz-testing")]
+        #[ink(message)]
+        pub fn inkscope_bug(&self) -> bool {
+            self.bug_flag
+        }
+    }
+}
+```
+
+Once the property is written, we can compile the contract:
+
 ```bash
     cd test-contracts
     . ./build.sh
 ```
 
-Execute the fuzzer against it and check the output
+And then execute the fuzzer against it and check the output
 ```bash
     ./target/release/inkscope-fuzzer ./test-contracts/ityfuzz/target/ink/ityfuzz.contract 
 ```
+
+If the fuzzer finds a property violation, it will print the execution trace and the violated property.
+
+## Usage
 
 - ⚠️ Requirements:
   - rust = 1.76
@@ -116,7 +195,8 @@ In order to test the fuzzer, you need to follow the steps below:
 ```bash
     cargo build --release
 ```
-3. Write the properties that you want to test
+
+3. Write the properties that you want to test and compile your contract with the `fuzz-testing` feature enabled.
     - Refer to the [write-properties document](docs/write-properties.md) for more information.
     
 4. Run the fuzzer
