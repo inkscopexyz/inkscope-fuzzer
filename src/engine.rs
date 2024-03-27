@@ -1,31 +1,26 @@
-use crate::generator::Generator;
 use crate::config::Config;
-use crate::constants::Constants;
 use crate::fuzzer::Fuzzer;
+use crate::generator::Generator;
 use crate::types::{AccountId, Balance, CodeHash, Hashing, TraceHash};
 
 use anyhow::{anyhow, Ok, Result};
 use drink::{
-    contracts_api,
     frame_support::sp_runtime::traits::Hash as HashTrait,
     pallet_contracts::{
         AddressGenerator, DefaultAddressGenerator, Determinism, ExecReturnValue,
     },
     runtime::MinimalRuntime,
     sandbox::Snapshot,
-    session::{contract_transcode::Value, Session, NO_ARGS, NO_ENDOWMENT, NO_SALT},
+    session::{contract_transcode::Value, Session},
     ContractBundle,
 };
 
-use clap::{Args, Parser, Subcommand};
 use log::{debug, info};
-use rayon::prelude::*;
 use scale_info::{form::PortableForm, TypeDef};
 use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash as StdHash, Hasher},
-    path::{Path, PathBuf},
-    thread,
+    path::PathBuf,
 };
 
 // Our own copy of method information. The selector is used as the key in the hashmap
@@ -82,15 +77,15 @@ impl Deploy {
             address,
         }
     }
-    fn calculate_code_hash(contract_bytes: &Vec<u8>) -> CodeHash {
+    fn calculate_code_hash(contract_bytes: &[u8]) -> CodeHash {
         Hashing::hash(contract_bytes)
     }
 
     fn calculate_address(
         caller: &AccountId,
         code_hash: &CodeHash,
-        data: &Vec<u8>,
-        salt: &Vec<u8>,
+        data: &[u8],
+        salt: &[u8],
     ) -> AccountId {
         <DefaultAddressGenerator as AddressGenerator<MinimalRuntime>>::contract_address(
             caller, code_hash, data, salt,
@@ -268,8 +263,7 @@ impl Engine {
             None => anyhow::bail!("No arguments for the selected constructor"),
         };
         let is_payable = method_info.payable;
-        let generator =
-            Generator::new(self.contract.transcoder.metadata().registry());
+        let generator = Generator::new(self.contract.transcoder.metadata().registry());
         let mut encoded_arguments = generator.generate(fuzzer, &method_info.arguments)?;
 
         let caller = self.generate_caller(fuzzer);
@@ -409,7 +403,7 @@ impl Engine {
     // Error if a property fail
     fn check_properties(
         &self,
-        mut fuzzer: &mut Fuzzer,
+        fuzzer: &mut Fuzzer,
         session: &mut Session<MinimalRuntime>,
         trace: &Trace,
     ) -> Result<()> {
@@ -480,12 +474,10 @@ impl Engine {
     pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()> {
         let start_time = std::time::Instant::now();
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
-        let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
-        // Execute the action: Initialize the state
-        self.initialize_state(&mut session)?;
 
+        //FIXME: Aca esta el error, se esta pasando la session modificada a cada instancia del run
         for _ in 0..max_iterations {
-            let r = self.run(&mut fuzzer, &mut session);
+            let r = self.run(&mut fuzzer);
             println!("Result: {:?}", r);
         }
         println!("Elapsed time: {:?}", start_time.elapsed());
@@ -505,22 +497,28 @@ impl Engine {
     //     Ok(())
     // }
 
-    fn run(
-        &mut self,
-        mut fuzzer: &mut Fuzzer,
-        session: &mut Session<MinimalRuntime>,
-    ) -> Result<()> {
+    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<()> {
         debug!("Starting run");
-        let mut current_state = None; // The current state not yet materialized in the session
+        let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
+
+        let mut current_state = match self.snapshot_cache.get(&0u64) {
+            Some(init_snapshot) => {
+                session.sandbox().restore_snapshot(init_snapshot.clone());
+                Some(init_snapshot)
+            }
+            _ => {
+                self.initialize_state(&mut session)?;
+                self.snapshot_cache
+                    .insert(0, session.sandbox().take_snapshot());
+                None
+            }
+        };
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //  Deploy the main contract to be fuzzed using a random constructor with fuzzed argumets
         let constructor_selector = fuzzer.choice(&self.constructors).unwrap();
-        let constructor = self.generate_constructor(
-            &mut fuzzer,
-            constructor_selector,
-            Default::default(),
-        )?;
+        let constructor =
+            self.generate_constructor(fuzzer, constructor_selector, Default::default())?;
 
         // Start the trace with a deployment
         let mut trace = Trace::new(constructor);
@@ -543,7 +541,7 @@ impl Engine {
                 current_state = None;
 
                 // Execute the action
-                let result = self.execute_deploy(session, &trace.deploy)?;
+                let result = self.execute_deploy(&mut session, &trace.deploy)?;
 
                 // Bail out if execution reverted
                 if !result.flags.is_empty() {
@@ -551,7 +549,7 @@ impl Engine {
                 };
 
                 // If it did not revert
-                self.check_properties(&mut fuzzer, session, &trace)?;
+                self.check_properties(fuzzer, &mut session, &trace)?;
 
                 // If the execution went ok then store the new state in the cache
                 self.snapshot_cache
@@ -565,8 +563,7 @@ impl Engine {
             debug!("Tx: {}/{}", i, max_txs);
 
             let message_selector = fuzzer.choice(&self.messages).unwrap();
-            let message =
-                self.generate_message(&mut fuzzer, message_selector, &callee)?;
+            let message = self.generate_message(fuzzer, message_selector, &callee)?;
             trace.push(message);
 
             // CACHE: Check we happened to choose the same trace prolog as a previous run
@@ -588,7 +585,8 @@ impl Engine {
                     current_state = None;
 
                     // Execute the action
-                    let result = self.execute_message(session, trace.last_message()?)?;
+                    let result =
+                        self.execute_message(&mut session, trace.last_message()?)?;
 
                     // Bail out if execution reverted
                     if !result.flags.is_empty() {
@@ -596,7 +594,7 @@ impl Engine {
                     };
 
                     // If it did not revert
-                    self.check_properties(&mut fuzzer, session, &trace)?;
+                    self.check_properties(fuzzer, &mut session, &trace)?;
 
                     // If the execution returned Ok(()) then store the new state in the cache
                     self.snapshot_cache
