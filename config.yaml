@@ -4,7 +4,7 @@ accounts:
 - 5C62Ck4UrFPiBtoCmeSrgF7x9yv9mn38446dhCpsi2mLHiFT
 only_mutable: true
 max_sequence_type_size: 10
-max_number_of_transactions: 10
+max_number_of_transactions: 50
 gas_limit:
   ref_time: 4611686018427387903
   proof_size: 4611686018427387903

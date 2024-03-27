@@ -624,9 +624,9 @@ impl Engine {
                 // Execute the action
                 let result = self.execute_deploy(&mut session, &trace.deploy)?;
 
-                // Bail out if execution reverted
+                // Return if execution reverted in constructor
                 if !result.flags.is_empty() {
-                    anyhow::bail!("Execution reverted");
+                    return Ok(None);
                 };
 
                 // If it did not revert
@@ -679,9 +679,10 @@ impl Engine {
                     let result =
                         self.execute_message(&mut session, trace.last_message()?)?;
 
-                    // Bail out if execution reverted
+                    // If execution reverted rollback last message in trace and continue
                     if !result.flags.is_empty() {
-                        anyhow::bail!("Execution reverted");
+                        trace.messages.pop();
+                        continue;
                     };
 
                     // If it did not revert
