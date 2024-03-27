@@ -33,7 +33,8 @@ fn main() -> Result<()> {
     let contract_path = cli.contract;
 
     let mut engine = Engine::new(contract_path, config)?;
-    engine.run_campaign(1000)?;
+    let campaign_result = engine.run_campaign(1000, true)?;
+    engine.print_campaign_result(&campaign_result);
 
     Ok(())
 }

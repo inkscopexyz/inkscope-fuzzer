@@ -55,6 +55,15 @@ use std::{
     path::PathBuf,
 };
 
+pub struct CampaignResult {
+    failed_traces: Vec<FailedTrace>,
+}
+
+pub struct FailedTrace {
+    trace: Trace,
+    failed_properties: Vec<Message>,
+}
+
 // Our own copy of method information. The selector is used as the key in the hashmap
 struct MethodInfo {
     arguments: Vec<TypeDef<PortableForm>>,
@@ -264,7 +273,7 @@ impl Engine {
 
         // TODO: fix callers
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
-        let mut runtime_fuzzer = Self {
+        let mut engine = Self {
             // Contract Info
             contract_path,
             contract,
@@ -281,8 +290,8 @@ impl Engine {
             // Settings
             config,
         };
-        runtime_fuzzer.extract_method_info()?;
-        Ok(runtime_fuzzer)
+        engine.extract_method_info()?;
+        Ok(engine)
     }
 
     fn generate_basic(
@@ -433,6 +442,46 @@ impl Engine {
         Ok(decoded)
     }
 
+    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
+        for failed_trace in &campaign_result.failed_traces {
+            println!("Property check failed");
+
+            // Contract Deployment
+            match self.decode_deploy(&failed_trace.trace.deploy.data) {
+                Err(_e) => {
+                    println!("Raw deploy: {:?}", &failed_trace.trace.deploy.data);
+                }
+                Result::Ok(x) => {
+                    println!("Decoded deploy: {:?}", x);
+                }
+            }
+
+            // Messages
+            for message in failed_trace.trace.messages.iter() {
+                match self.decode_message(&message.input) {
+                    Err(_e) => {
+                        println!("Raw message: {:?}", &message.input);
+                    }
+                    Result::Ok(x) => {
+                        println!("Decoded message: {:?}", x);
+                    }
+                }
+            }
+
+            // Failed properties
+            for message in failed_trace.failed_properties.iter() {
+                match self.decode_message(&message.input) {
+                    Err(_e) => {
+                        println!("Raw message: {:?}", &message.input);
+                    }
+                    Result::Ok(x) => {
+                        println!("Decoded message: {:?}", x);
+                    }
+                }
+            }
+        }
+    }
+
     // Error if a property fail
     fn check_properties(
         &self,
@@ -490,59 +539,27 @@ impl Engine {
         Ok(failed_properties)
     }
 
-    pub fn run_campaign(&mut self, max_iterations: usize) -> Result<()> {
+    pub fn run_campaign(
+        &mut self,
+        max_iterations: usize,
+        fail_fast: bool,
+    ) -> Result<CampaignResult> {
         let start_time = std::time::Instant::now();
+        let mut failed_traces = vec![];
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
 
         for _ in 0..max_iterations {
-            match self.run(&mut fuzzer)? {
-                Some((trace, failed_properties)) => {
-                    // Fail fast if a property fails
-
-                    println!("Property check failed");
-
-                    // Contract Deployment
-                    match self.decode_deploy(&trace.deploy.data) {
-                        Err(_e) => {
-                            println!("Raw deploy: {:?}", &trace.deploy.data);
-                        }
-                        Result::Ok(x) => {
-                            println!("Decoded deploy: {:?}", x);
-                        }
-                    }
-
-                    // Messages
-                    for message in trace.messages.iter() {
-                        match self.decode_message(&message.input) {
-                            Err(_e) => {
-                                println!("Raw message: {:?}", &message.input);
-                            }
-                            Result::Ok(x) => {
-                                println!("Decoded message: {:?}", x);
-                            }
-                        }
-                    }
-
-                    // Failed properties
-                    for message in failed_properties.iter() {
-                        match self.decode_message(&message.input) {
-                            Err(_e) => {
-                                println!("Raw message: {:?}", &message.input);
-                            }
-                            Result::Ok(x) => {
-                                println!("Decoded message: {:?}", x);
-                            }
-                        }
-                    }
+            if let Some(failed_trace) = self.run(&mut fuzzer)? {
+                // Fail fast if a property fails
+                failed_traces.push(failed_trace);
+                if fail_fast {
                     break;
-                }
-                None => {
-                    println!("No properties failed");
                 }
             }
         }
+
         println!("Elapsed time: {:?}", start_time.elapsed());
-        Ok(())
+        Ok(CampaignResult { failed_traces })
     }
     // pub fn run_campaign_concurrent(&mut self, max_iterations: usize) -> Result<()> {
     //     let num_cpus = rayon::current_num_threads();
@@ -558,7 +575,7 @@ impl Engine {
     //     Ok(())
     // }
 
-    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<(Trace, Vec<Message>)>> {
+    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<FailedTrace>> {
         debug!("Starting run");
         let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
 
@@ -618,7 +635,10 @@ impl Engine {
 
                 if !failed_properties.is_empty() {
                     println!("Failed properties: {:?}", failed_properties);
-                    return Ok(Some((trace, failed_properties)));
+                    return Ok(Some(FailedTrace {
+                        trace,
+                        failed_properties,
+                    }));
                 }
 
                 // If the execution went ok then store the new state in the cache
@@ -669,7 +689,10 @@ impl Engine {
                         self.check_properties(fuzzer, &mut session, &trace)?;
                     if !failed_properties.is_empty() {
                         println!("Failed properties: {:?}", failed_properties);
-                        return Ok(Some((trace, failed_properties)));
+                        return Ok(Some(FailedTrace {
+                            trace,
+                            failed_properties,
+                        }));
                     }
 
                     // If the execution returned Ok(()) then store the new state in the
