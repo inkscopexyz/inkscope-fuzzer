@@ -1,25 +1,16 @@
-mod generator;
+mod cli;
 mod config;
 mod constants;
-mod fuzzer;
-mod types;
 mod engine;
+mod fuzzer;
+mod generator;
+mod types;
 
 use crate::config::Config;
-use std::path::PathBuf;
-use clap::{self, Parser};
 use anyhow::{anyhow, Ok, Result};
+use clap::{self, Parser};
+use cli::Cli;
 use engine::Engine;
-
-#[derive(Debug, Parser)]
-struct Cli {
-    /// input file
-    #[clap(index = 1)]
-    pub contract: PathBuf,
-
-    #[arg(short, long, default_value = "config.yaml")]
-    config: PathBuf,
-}
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -104,4 +95,3 @@ fn main() -> Result<()> {
 
 //     Ok(())
 // }
-
