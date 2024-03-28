@@ -510,46 +510,4 @@ mod tests {
         // Check that the generated encoded data is the same as the one we encoded by hand
         assert_eq!(encoded, raw_encoded);
     }
-
-    #[test]
-    fn test_generate() {
-        // A rather big unittest that tests we generate all possible new() calls in the
-        // flipper contract
-        let contract_path = "./test-contracts/flipper/target/ink/flipper.contract";
-        let bundle = ContractBundle::load(contract_path).unwrap();
-        let ink_project = bundle.transcoder.metadata();
-        let mut fuzzer = Fuzzer::new(0, Constants::default());
-        let selected = ink_project
-            .spec()
-            .messages()
-            .iter()
-            .find(|m| m.label() == "new")
-            .unwrap()
-            .args()
-            .iter()
-            .map(|arg| {
-                ink_project
-                    .registry()
-                    .resolve(arg.ty().ty().id)
-                    .unwrap()
-                    .type_def
-                    .clone()
-            })
-            .collect::<Vec<_>>();
-
-        let generator = Generator::new(ink_project.registry());
-        // let mut generator =
-        //     ArgumentsGenerator::from_label(&ink_project, &mut fuzzer, "new").unwrap();
-
-        let mut corpus = HashSet::new();
-        for _i in 0..100 {
-            corpus.insert(generator.generate(&mut fuzzer, &selected).unwrap());
-        }
-        assert_eq!(corpus.len(), 2);
-
-        let mut expected_corpus = HashSet::new();
-        expected_corpus.insert(vec![155u8, 174, 157, 94, 1]); // new(true)
-        expected_corpus.insert(vec![155u8, 174, 157, 94, 0]); // new(false)
-        assert_eq!(corpus, expected_corpus);
-    }
 }

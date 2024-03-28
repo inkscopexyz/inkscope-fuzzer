@@ -22,6 +22,12 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    // Exits as soon as a failed property is found
+    pub fail_fast: bool,
+
+    // Max number of iterations to run the fuzzer
+    pub max_rounds: usize,
+
     // Max endowment that can be sent in a fuzzed message
     pub budget: Balance,
 
@@ -53,6 +59,8 @@ pub struct Config {
 }
 impl Config {
     pub fn new(
+        fail_fast: bool,
+        max_rounds: usize,
         budget: Balance,
         accounts: Vec<AccountId>,
         only_mutable: bool,
@@ -64,6 +72,8 @@ impl Config {
         constants: Constants,
     ) -> Self {
         Self {
+            fail_fast,
+            max_rounds,
             budget,
             accounts,
             only_mutable,
@@ -94,7 +104,9 @@ impl Default for Config {
         // ];
 
         Self {
-            budget: 100,
+            fail_fast: true,
+            max_rounds: 1000,
+            budget: 1000000000000,
             accounts: vec![AccountId::new([0; 32]), AccountId::new([1; 32])],
             only_mutable: true,
             max_sequence_type_size: 10,

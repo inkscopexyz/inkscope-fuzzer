@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-drink = { git = "https://github.com/inkscopexyz/inkscope-drink.git", branch = "main" }
+drink = { git = "https://github.com/inkscopexyz/inkscope-drink.git",rev = "b25b886" }
 fastrand = "2.0.1"
 hex = "0.4.3"
 log = "0.4.20"
