@@ -31,11 +31,10 @@ impl Fuzzer {
         self.rng.choice(iter)
     }
 
-    // Generates random length for a sequence type with bias towards lower numbers
+    // Generates random length for a sequence type
     pub fn fuzz_length(&mut self) -> usize {
-        let m = 20;
-        let r = self.rng.usize(1..m);
-        m / (r * r)
+        let m = 20; // Todo add it as a parameter in constants.lengths
+        self.rng.usize(1..m)
     }
 
     pub fn fuzz_bool(&mut self) -> bool {
