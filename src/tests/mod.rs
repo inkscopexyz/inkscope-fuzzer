@@ -10,17 +10,8 @@ pub mod testing {
     fn test_contract(
         contract_path: PathBuf,
         should_find_broken_properties: bool,
-        max_rounds: Option<usize>,
-        max_number_of_transactions: Option<usize>,
+        config: Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Set up the fuzzer configuration
-        let config = Config {
-            fail_fast: true,
-            max_rounds: max_rounds.unwrap_or(10),
-            max_number_of_transactions: max_number_of_transactions.unwrap_or(50),
-            ..Default::default()
-        };
-
         let mut engine = Engine::new(contract_path, config)?;
         let campaign_result = engine.run_campaign()?;
         engine.print_campaign_result(&campaign_result);
@@ -37,43 +28,77 @@ pub mod testing {
 
     #[test]
     fn fuzz_ityfuzz() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 1000,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
         test_contract(
             PathBuf::from("./test-contracts/ityfuzz/target/ink/ityfuzz.contract"),
             true,
-            Some(1000),
-            None,
+            config,
         )
     }
 
     #[test]
     fn fuzz_integer_overflow_or_underflow_1_vulnerable(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
         test_contract(PathBuf::from(
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-1/vulnerable-example/target/ink/integer_overflow_or_underflow.contract", 
-        ),true,Some(100),None)
+        ),true,config)
     }
 
     #[test]
     fn fuzz_integer_overflow_or_underflow_1_remediated(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 10,
+            max_number_of_transactions: 10,
+            ..Default::default()
+        };
         test_contract(PathBuf::from(
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-1/remediated-example/target/ink/integer_overflow_or_underflow.contract", 
-        ),false,Some(10),Some(10))
+        ),false,config)
     }
 
     #[test]
     fn fuzz_integer_overflow_or_underflow_2_vulnerable(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
         test_contract(PathBuf::from(
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-2/vulnerable-example/target/ink/integer_overflow_or_underflow.contract", 
-        ),true,Some(100),None)
+        ),true,config)
     }
 
     #[test]
     fn fuzz_integer_overflow_or_underflow_2_remediated(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 10,
+            max_number_of_transactions: 10,
+            ..Default::default()
+        };
         test_contract(PathBuf::from(
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-2/remediated-example/target/ink/integer_overflow_or_underflow.contract", 
-        ),false,Some(10),Some(10))
+        ),false,config)
     }
 }
