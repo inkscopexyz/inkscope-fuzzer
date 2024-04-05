@@ -556,4 +556,137 @@ mod tests {
             assert_eq!(u32::decode(parsing_pointer).unwrap(), 0x41);
         }
     }
+
+    #[test]
+    fn test_array_of_u32() {
+        // Array: A fixed-size collection of same-typed values is encoded, followed by each item's encoding concatenated in turn.
+
+        let mut builder = PortableRegistryBuilder::new();
+        let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
+        let u32_type_id = builder.register_type(u32_type);
+
+        // Array
+        let array_u32_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefArray::new(3, u32_type_id.into()),
+            vec![],
+        );
+        let array_u32_type_id = builder.register_type(array_u32_type);
+        let registry = builder.finish();
+
+        // build a generator for that registry
+        let generator = Generator::new(&registry);
+        // A constant fuzzer containing only 0x41 as u8 constants
+        let mut fuzzer = Fuzzer::new(
+            0,
+            Constants {
+                u32_constants: vec![0x41],
+                ..Default::default()
+            },
+        );
+
+        // get the same type we just register from the registry
+        let ty = registry.resolve(array_u32_type_id).unwrap().type_def.clone();
+
+        // Generate a fuzzed encoded data for it
+        let encoded = generator.generate(&mut fuzzer, &vec![ty]).unwrap();
+        let parsing_pointer = &mut &encoded[..];
+
+        // Decode it by hand
+        for _ in 0..3 {
+            // All elements are taken from the constants (only 0x41)
+            assert_eq!(u32::decode(parsing_pointer).unwrap(), 0x41);
+        }
+
+        assert!(u32::decode(parsing_pointer).is_err()); // No more elements
+    }
+
+    #[test]
+    fn test_tuple() {
+        // Tuple: A fixed-size collection of potentially different-typed values is encoded, followed by each item's encoding concatenated in turn.
+
+        let mut builder = PortableRegistryBuilder::new();
+        let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
+        let u32_type_id = builder.register_type(u32_type);
+        let u64_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U64, vec![]);
+        let u64_type_id = builder.register_type(u64_type);
+
+        // Tuple
+        let tuple_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefTuple::new_portable(vec![u32_type_id.into(), u64_type_id.into()]),
+            vec![],
+        );
+        let tuple_type_id = builder.register_type(tuple_type);
+        let registry = builder.finish();
+
+        // build a generator for that registry
+        let generator = Generator::new(&registry);
+        // A constant fuzzer containing only 0x41 as u8 constants
+        let mut fuzzer = Fuzzer::new(
+            0,
+            Constants {
+                u32_constants: vec![0x41],
+                u64_constants: vec![0x42],
+                ..Default::default()
+            },
+        );
+
+        // get the same type we just register from the registry
+        let ty = registry.resolve(tuple_type_id).unwrap().type_def.clone();
+
+        // Generate a fuzzed encoded data for it
+        let encoded = generator.generate(&mut fuzzer, &vec![ty]).unwrap();
+        let parsing_pointer = &mut &encoded[..];
+
+        // Decode it by hand
+        assert_eq!(u32::decode(parsing_pointer).unwrap(), 0x41);
+        assert_eq!(u64::decode(parsing_pointer).unwrap(), 0x42);
+
+        assert!(u32::decode(parsing_pointer).is_err()); // No more elements
+    }
+
+    #[test]
+    fn test_compact() {
+        // Compact: A compact encoding of a value is encoded.
+
+        let mut builder = PortableRegistryBuilder::new();
+        let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
+        let u32_type_id = builder.register_type(u32_type);
+
+        // Compact
+        let compact_type = Type::new(
+            Path::default(),
+            vec![],
+            TypeDefCompact::new(u32_type_id.into()),
+            vec![],
+        );
+        let compact_type_id = builder.register_type(compact_type);
+        let registry = builder.finish();
+
+        // build a generator for that registry
+        let generator = Generator::new(&registry);
+        // A constant fuzzer containing only 0x41 as u8 constants
+        let mut fuzzer = Fuzzer::new(
+            0,
+            Constants {
+                u32_constants: vec![0x41],
+                ..Default::default()
+            },
+        );
+
+        // get the same type we just register from the registry
+        let ty = registry.resolve(compact_type_id).unwrap().type_def.clone();
+
+        // Generate a fuzzed encoded data for it
+        let encoded = generator.generate(&mut fuzzer, &vec![ty]).unwrap();
+        let parsing_pointer = &mut &encoded[..];
+
+        // Decode it by hand
+        let value = <Compact<u32>>::decode(parsing_pointer).unwrap();
+        assert_eq!(value.0, 0x41);
+    }
+
 }
