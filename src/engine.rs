@@ -27,10 +27,7 @@ use drink::{
     runtime::MinimalRuntime,
     sandbox::Snapshot,
     session::{
-        contract_transcode::{
-            Map,
-            Value,
-        },
+        contract_transcode::Value,
         Session,
     },
     ContractBundle,
@@ -41,10 +38,8 @@ use log::{
     info,
 };
 use parity_scale_codec::Encode;
-use scale_info::{
-    form::PortableForm,
-    TypeDef,
-};
+use scale_info::TypeDef;
+use scale_info::form::PortableForm;
 use std::{
     collections::{
         HashMap,
@@ -92,7 +87,7 @@ impl MethodInfo {
 }
 
 #[derive(StdHash, Debug, Clone)]
-struct Deploy {
+pub struct Deploy {
     caller: AccountId,
     endowment: Balance,
     contract_bytes: Vec<u8>,
@@ -121,9 +116,6 @@ impl Deploy {
             address,
         }
     }
-    fn calculate_code_hash(contract_bytes: &[u8]) -> CodeHash {
-        Hashing::hash(contract_bytes)
-    }
 
     fn calculate_address(
         caller: &AccountId,
@@ -146,7 +138,7 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone)]
-struct Trace {
+pub struct Trace {
     deploy: Deploy,
     messages: Vec<Message>,
 }
@@ -185,7 +177,7 @@ impl Trace {
 
 pub struct Engine {
     // Contract Info
-    contract_path: PathBuf,
+    _contract_path: PathBuf,
     contract: ContractBundle,
 
     // Rapid access to function info
@@ -278,7 +270,7 @@ impl Engine {
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
         let mut engine = Self {
             // Contract Info
-            contract_path,
+            _contract_path: contract_path,
             contract,
 
             // Rapid access to function info
@@ -650,7 +642,7 @@ impl Engine {
 
     pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
         let output = Output::new(&self.contract);
-        output.print_campaign_result(&campaign_result);
+        output.print_campaign_result(campaign_result);
     }
 }
 
@@ -680,7 +672,7 @@ impl<'a> Output<'a> {
         Ok(decoded)
     }
 
-    fn print_value(&self, value: &Value) {
+    fn print_value(value: &Value) {
         match value {
             Value::Map(map) => {
                 print!("{}(", map.ident().unwrap());
@@ -688,7 +680,7 @@ impl<'a> Output<'a> {
                     if n != 0 {
                         print!(", ");
                     }
-                    self.print_value(value);
+                    Self::print_value(value);
                 }
                 print!(")");
             }
@@ -709,7 +701,7 @@ impl<'a> Output<'a> {
                 }
                 Result::Ok(x) => {
                     print!("  Deploy: ",);
-                    self.print_value(&x);
+                    Self::print_value(&x);
                     println!();
                 }
             }
@@ -723,7 +715,7 @@ impl<'a> Output<'a> {
                     }
                     Result::Ok(x) => {
                         print!("  Deploy: ",);
-                        self.print_value(&x);
+                        Self::print_value(&x);
                         println!();
                     }
                 }
@@ -737,7 +729,7 @@ impl<'a> Output<'a> {
                     }
                     Result::Ok(x) => {
                         print!("  Property: ",);
-                        self.print_value(&x);
+                        Self::print_value(&x);
                         println!();
                     }
                 }
@@ -779,5 +771,15 @@ mod tests {
         trace1.push(message);
         trace2.push(message_identical);
         assert_eq!(&trace1.hash(), &trace2.hash());
+    }
+
+    // test method info mutates and payable
+    #[test]
+    fn test_method_info() {
+        let arguments = vec![];
+        let method_info = MethodInfo::new(arguments, true, true, false);
+        assert_eq!(method_info.mutates, true);
+        assert_eq!(method_info.payable, true);
+        assert_eq!(method_info.constructor, false);
     }
 }

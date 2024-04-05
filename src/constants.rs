@@ -3,7 +3,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Constants {
     pub u8_constants: Vec<u8>,
     pub u16_constants: Vec<u16>,

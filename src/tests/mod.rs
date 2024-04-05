@@ -3,13 +3,9 @@ pub mod ityfuzz {
 
     use crate::{
         config::Config,
-        constants::Constants,
         engine::Engine,
     };
-    use std::{
-        default,
-        path::PathBuf,
-    };
+    use std::path::PathBuf;
 
     fn test_contract(contract_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         // Set up the fuzzer configuration

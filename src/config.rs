@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Config {
     // Exits as soon as a failed property is found
     pub fail_fast: bool,
@@ -56,35 +56,6 @@ pub struct Config {
 
     // Initial set of constant values to use in the fuzzing
     pub constants: Constants,
-}
-impl Config {
-    pub fn new(
-        fail_fast: bool,
-        max_rounds: usize,
-        budget: Balance,
-        accounts: Vec<AccountId>,
-        only_mutable: bool,
-        max_sequence_type_size: u8,
-        max_number_of_transactions: usize,
-        gas_limit: Weight,
-        property_prefix: String,
-        fuzz_property_max_rounds: usize,
-        constants: Constants,
-    ) -> Self {
-        Self {
-            fail_fast,
-            max_rounds,
-            budget,
-            accounts,
-            only_mutable,
-            max_sequence_type_size,
-            max_number_of_transactions,
-            gas_limit,
-            property_prefix,
-            fuzz_property_max_rounds,
-            constants,
-        }
-    }
 }
 
 impl Default for Config {
@@ -129,5 +100,20 @@ impl Config {
         let fp = File::create(file)?;
         serde_yaml::to_writer(fp, self)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config() {
+        // Test from and to file in memory
+        let config = Config::default();
+        let file = "test_config.yaml";
+        config.to_yaml_file(file).unwrap();
+        let config2 = Config::from_yaml_file(file).unwrap();
+        assert_eq!(config, config2);
     }
 }

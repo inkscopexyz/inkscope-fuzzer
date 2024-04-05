@@ -15,8 +15,8 @@ impl Fuzzer {
         }
     }
 
-    pub fn with_seed(self, rng_seed: u64) -> Self {
-        Self::new(rng_seed, self.constants)
+    pub fn with_seed(&self, rng_seed: u64) -> Self {
+        Self::new(rng_seed, self.constants.clone())
     }
 
     pub fn with_constants(&mut self, constants: Constants) -> Self {
@@ -157,5 +157,19 @@ mod tests {
             strings.insert(fuzzer.fuzz_str());
         }
         assert!(strings.len() > 1);
+    }
+
+    #[test]
+    fn test_with_seed() {
+        let mut fuzzer = Fuzzer::new(0, Constants::default());
+        let mut fuzzer2 = fuzzer.with_seed(1);
+        assert_ne!(fuzzer.rng.u64(..), fuzzer2.rng.u64(..));
+    }
+
+    #[test]
+    fn test_with_constants() {
+        let mut fuzzer = Fuzzer::new(0, Constants::default());
+        let fuzzer2 = fuzzer.with_constants(Constants::default());
+        assert_eq!(fuzzer.constants, fuzzer2.constants);
     }
 }
