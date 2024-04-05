@@ -96,6 +96,8 @@ impl Config {
         let des = serde_yaml::from_reader(fp)?;
         Ok(des)
     }
+    
+    #[allow(dead_code)]
     pub fn to_yaml_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let fp = File::create(file)?;
         serde_yaml::to_writer(fp, self)?;

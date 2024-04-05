@@ -65,8 +65,10 @@ pub struct FailedTrace {
 // Our own copy of method information. The selector is used as the key in the hashmap
 struct MethodInfo {
     arguments: Vec<TypeDef<PortableForm>>,
+    #[allow(dead_code)]
     mutates: bool,
     payable: bool,
+    #[allow(dead_code)]
     constructor: bool,
 }
 
@@ -778,8 +780,8 @@ mod tests {
     fn test_method_info() {
         let arguments = vec![];
         let method_info = MethodInfo::new(arguments, true, true, false);
-        assert_eq!(method_info.mutates, true);
-        assert_eq!(method_info.payable, true);
-        assert_eq!(method_info.constructor, false);
+        assert!(method_info.mutates);
+        assert!(method_info.payable);
+        assert!(!method_info.constructor);
     }
 }

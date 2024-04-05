@@ -15,10 +15,12 @@ impl Fuzzer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_seed(&self, rng_seed: u64) -> Self {
         Self::new(rng_seed, self.constants.clone())
     }
 
+    #[allow(dead_code)]
     pub fn with_constants(&mut self, constants: Constants) -> Self {
         Self::new(self.rng.u64(..), constants)
     }
