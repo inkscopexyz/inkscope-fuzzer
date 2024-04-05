@@ -60,4 +60,20 @@ pub mod testing {
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-1/remediated-example/target/ink/integer_overflow_or_underflow.contract", 
         ),false,Some(10),Some(10))
     }
+
+    #[test]
+    fn fuzz_integer_overflow_or_underflow_2_vulnerable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        test_contract(PathBuf::from(
+            "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-2/vulnerable-example/target/ink/integer_overflow_or_underflow.contract", 
+        ),true,Some(100),None)
+    }
+
+    #[test]
+    fn fuzz_integer_overflow_or_underflow_2_remediated(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        test_contract(PathBuf::from(
+            "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-2/remediated-example/target/ink/integer_overflow_or_underflow.contract", 
+        ),false,Some(10),Some(10))
+    }
 }
