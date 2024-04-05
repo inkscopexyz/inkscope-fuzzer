@@ -442,6 +442,11 @@ impl Engine {
         // Effectively a dry-run
         let checkpoint = session.sandbox().take_snapshot();
         let properties = self.properties.clone();
+
+        // For each property, we will only try to break it once. If we find an argument
+        // that makes it return false, we will move on to the next property
+        // without looking for more examples. We finish the search on the first example
+        // that breaks it.
         for property in properties.iter() {
             let arguments_length = self
                 .method_info
@@ -455,9 +460,12 @@ impl Engine {
                 // Multiple arguments execute the property multiple times
                 self.config.fuzz_property_max_rounds ^ arguments_length
             };
+
+            // If the property has arguments, fuzz them
             for _round in 0..max_rounds {
                 let property_message =
                     self.generate_message(fuzzer, property, &contract_address)?;
+                // TODO: Handle ContractTrapped instead of bubbling up the error
                 let result = self.execute_message(session, &property_message);
                 assert_eq!(
                     vec![0, 0],
@@ -473,11 +481,14 @@ impl Engine {
                     }
                 };
 
-                if failed {
-                    failed_properties.push(property_message);
-                }
-
                 session.sandbox().restore_snapshot(checkpoint.clone());
+
+                if failed {
+                    // If we find an argument that makes this property fail, we store it
+                    // and do not check for more
+                    failed_properties.push(property_message);
+                    break;
+                }
             }
         }
 
@@ -565,6 +576,7 @@ impl Engine {
                 // load it from the `current_state`
                 current_state = None;
 
+                // TODO: Handle ContractTrapped instead of bubbling up the error
                 // Execute the action
                 let result = self.execute_deploy(&mut session, &trace.deploy)?;
 
@@ -619,6 +631,7 @@ impl Engine {
                     current_state = None;
 
                     // Execute the action
+                    // TODO: Handle ContractTrapped instead of bubbling up the error
                     let result =
                         self.execute_message(&mut session, trace.last_message()?)?;
 
