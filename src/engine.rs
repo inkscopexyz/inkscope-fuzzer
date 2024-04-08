@@ -23,6 +23,7 @@ use drink::{
         DefaultAddressGenerator,
         Determinism,
         ExecReturnValue,
+        InstantiateReturnValue,
     },
     runtime::MinimalRuntime,
     sandbox::Snapshot,
@@ -31,6 +32,7 @@ use drink::{
         Session,
     },
     ContractBundle,
+    DispatchError,
 };
 
 use log::{
@@ -38,8 +40,10 @@ use log::{
     info,
 };
 use parity_scale_codec::Encode;
-use scale_info::TypeDef;
-use scale_info::form::PortableForm;
+use scale_info::{
+    form::PortableForm,
+    TypeDef,
+};
 use std::{
     collections::{
         HashMap,
@@ -57,6 +61,18 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
+// TODO: Document this better
+// When a failed trace is found, there are 3 possible reasons:
+// 1. The contract panicked during the execution of the deploy, in this case the
+//    failed_properties will be empty, and the trace will contain only the deploy that
+//    failed.
+// 2. The contract panicked during the execution of a message because of a
+//    ContractTrapped, in this case the failed_properties will be empty, and the trace
+//    will contain the deploy and all the messages that were executed, being the last
+//    message the one that failed.
+// 3. One or more properties defined by the developer did not hold, in this case the
+//    failed_properties vec will contain the ones that broke, and the trace will contain
+//    the deploy and all the messages that were executed before the property failed.
 pub struct FailedTrace {
     pub trace: Trace,
     pub failed_properties: Vec<Message>,
@@ -376,7 +392,7 @@ impl Engine {
         &self,
         session: &mut Session<MinimalRuntime>,
         deploy: &Deploy,
-    ) -> Result<ExecReturnValue> {
+    ) -> Result<InstantiateReturnValue<drink::AccountId32>, DispatchError> {
         info!("Deploying contract with data {:?}", deploy);
         let deployment_result = session.sandbox().deploy_contract(
             deploy.contract_bytes.clone(),
@@ -387,12 +403,7 @@ impl Engine {
             self.config.gas_limit,
             None,
         );
-        let parsed_deployment = deployment_result
-            .result
-            .map_err(|e| anyhow::anyhow!("Error executing deploy: {:?}", e))?;
-        let result = parsed_deployment.result;
-        debug!("Deploy Result: {:?}", result);
-        Ok(result)
+        deployment_result.result
     }
 
     // Exceutes the message on the given session
@@ -400,7 +411,7 @@ impl Engine {
         &self,
         session: &mut Session<MinimalRuntime>,
         message: &Message,
-    ) -> Result<ExecReturnValue> {
+    ) -> Result<ExecReturnValue, DispatchError> {
         // TODO: This result has to be checked for reverts. In the flags field we can find
         // the revert flag
         info!("Sending message with data {:?}", message);
@@ -415,10 +426,9 @@ impl Engine {
                 None,
                 Determinism::Enforced,
             )
-            .result
-            .map_err(|e| anyhow::anyhow!("Error executing message: {:?}", e))?;
+            .result;
         debug!("Result: {:?}", result);
-        Ok(result)
+        result
     }
 
     // Error if a property fail
@@ -459,19 +469,31 @@ impl Engine {
             for _round in 0..max_rounds {
                 let property_message =
                     self.generate_message(fuzzer, property, &contract_address)?;
-                // TODO: Handle ContractTrapped instead of bubbling up the error
+
                 let result = self.execute_message(session, &property_message);
-                assert_eq!(
-                    vec![0, 0],
-                    std::result::Result::<bool, ()>::Ok(false).encode()
-                );
 
                 // A property is considered failed if the result of calling the property
-                // is Ok(false)
+                // is Ok(false) or if the transaction panics
                 let failed = match result {
-                    Err(_) => false,
+                    Err(e) => {
+                        // If the property reverts or panics, we also consider it failed
+                        match e {
+                            DispatchError::Module(module_error) => {
+                                module_error.message == Some("ContractTrapped")
+                            }
+                            _ => {
+                                // If the error is not a ContractTrapped, we panic because
+                                // is not an expected behavior
+                                println!("Error: {:?}", e);
+                                panic!();
+                            }
+                        }
+                    }
+                    // If the property reverts or returns false
                     Result::Ok(result) => {
-                        result.data == std::result::Result::<bool, ()>::Ok(false).encode()
+                        !result.flags.is_empty()//TODO: check if this is ok 
+                            || result.data
+                                == std::result::Result::<bool, ()>::Ok(false).encode()
                     }
                 };
 
@@ -570,16 +592,35 @@ impl Engine {
                 // load it from the `current_state`
                 current_state = None;
 
-                // TODO: Handle ContractTrapped instead of bubbling up the error
                 // Execute the action
-                let result = self.execute_deploy(&mut session, &trace.deploy)?;
+                let deployment_res = self.execute_deploy(&mut session, &trace.deploy);
 
-                // Return if execution reverted in constructor
-                if !result.flags.is_empty() {
-                    return Ok(None);
+                match deployment_res {
+                    Err(e) => {
+                        // If the deployment panics, we consider it failed
+                        match e {
+                            DispatchError::Module(module_error)
+                                if (module_error.message == Some("ContractTrapped")) =>
+                            {
+                                return Ok(Some(FailedTrace {
+                                    trace,
+                                    failed_properties: vec![],
+                                }));
+                            }
+                            _ => {
+                                // If the error is not a ContractTrapped, we panic because
+                                // is not an expected behavior
+                                println!("Error: {:?}", e);
+                                panic!();
+                            }
+                        }
+                    }
+                    // Return if execution reverted in constructor
+                    Result::Ok(res) if !res.result.flags.is_empty() => return Ok(None),
+                    _ => {}
                 };
 
-                // If it did not revert
+                // If it did not revert or panic we check the properties
                 let failed_properties =
                     self.check_properties(fuzzer, &mut session, &trace)?;
 
@@ -625,14 +666,40 @@ impl Engine {
                     current_state = None;
 
                     // Execute the action
-                    // TODO: Handle ContractTrapped instead of bubbling up the error
                     let result =
-                        self.execute_message(&mut session, trace.last_message()?)?;
+                        self.execute_message(&mut session, trace.last_message()?);
 
-                    // If execution reverted rollback last message in trace and continue
-                    if !result.flags.is_empty() {
-                        trace.messages.pop();
-                        continue;
+                    // A property is considered failed if the result of calling the
+                    // property is Ok(false) or if the transaction
+                    // panics
+                    match result {
+                        Err(e) => {
+                            // If the property reverts or panics, we also consider it
+                            // failed
+                            match e {
+                                DispatchError::Module(module_error)
+                                    if (module_error.message
+                                        == Some("ContractTrapped")) =>
+                                {
+                                    return Ok(Some(FailedTrace {
+                                        trace,
+                                        failed_properties: vec![],
+                                    }));
+                                }
+                                _ => {
+                                    // If the error is not a ContractTrapped, we panic
+                                    // because is not an expected behavior
+                                    panic!("Error: {:?}", e);
+                                }
+                            }
+                        }
+                        // If execution reverted rollback last message in trace and
+                        // continue
+                        Result::Ok(result) if (!result.flags.is_empty()) => {
+                            trace.messages.pop();
+                            continue;
+                        }
+                        _ => {}
                     };
 
                     // If it did not revert

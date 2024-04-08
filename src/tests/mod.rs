@@ -101,4 +101,40 @@ pub mod testing {
             "./test-contracts/coinfabrik-test-contracts/integer-overflow-or-underflow-2/remediated-example/target/ink/integer_overflow_or_underflow.contract", 
         ),false,config)
     }
+
+    #[test]
+    fn fuzz_message_panics() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/message-panics/target/ink/message_panics.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_constructor_panics() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/constructor-panics/target/ink/constructor_panics.contract",
+            ),
+            true,
+            config,
+        )
+    }
 }
