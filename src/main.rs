@@ -10,7 +10,6 @@ mod types;
 
 use crate::config::Config;
 use anyhow::{
-    anyhow,
     Ok,
     Result,
 };
@@ -19,10 +18,7 @@ use clap::{
     Parser,
 };
 use cli::Cli;
-use engine::{
-    Engine,
-    Output,
-};
+use engine::Engine;
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
