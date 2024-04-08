@@ -23,7 +23,6 @@ use drink::{
         DefaultAddressGenerator,
         Determinism,
         ExecReturnValue,
-        InstantiateReturnValue,
     },
     runtime::MinimalRuntime,
     sandbox::Snapshot,
@@ -199,9 +198,9 @@ pub enum MessageOrDeployResult {
     Success(Vec<u8>),
     Unhandled(DispatchError),
 }
-impl Into<MessageOrDeployResult> for Result<ExecReturnValue, DispatchError> {
-    fn into(self) -> MessageOrDeployResult {
-        match self {
+impl From<Result<ExecReturnValue, DispatchError>> for MessageOrDeployResult {
+    fn from(val: Result<ExecReturnValue, DispatchError>) -> Self {
+        match val {
             Err(e) => {
                 // If the deployment panics, we consider it failed
                 match e {
