@@ -354,6 +354,10 @@ mod tests {
     use crate::constants::Constants;
 
     use super::*;
+    use parity_scale_codec::{
+        Compact,
+        Decode,
+    };
     use scale_info::{
         build::{
             Fields,
@@ -363,7 +367,6 @@ mod tests {
         PortableRegistryBuilder,
         Type,
     };
-    use parity_scale_codec::{Compact, Decode};
 
     #[test]
     fn test_generate_u8() {
@@ -398,11 +401,11 @@ mod tests {
         assert_eq!(encoded, raw_encoded);
     }
 
-
     #[test]
     fn test_vector_of_u32() {
-        // Sequence: A collection of same-typed values is encoded, prefixed with a compact encoding of the number of items,
-        // followed by each item's encoding concatenated in turn.
+        // Sequence: A collection of same-typed values is encoded, prefixed with a compact
+        // encoding of the number of items, followed by each item's encoding
+        // concatenated in turn.
 
         let mut builder = PortableRegistryBuilder::new();
         let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
@@ -447,7 +450,8 @@ mod tests {
 
     #[test]
     fn test_array_of_u32() {
-        // Array: A fixed-size collection of same-typed values is encoded, followed by each item's encoding concatenated in turn.
+        // Array: A fixed-size collection of same-typed values is encoded, followed by
+        // each item's encoding concatenated in turn.
 
         let mut builder = PortableRegistryBuilder::new();
         let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
@@ -475,7 +479,11 @@ mod tests {
         );
 
         // get the same type we just register from the registry
-        let ty = registry.resolve(array_u32_type_id).unwrap().type_def.clone();
+        let ty = registry
+            .resolve(array_u32_type_id)
+            .unwrap()
+            .type_def
+            .clone();
 
         // Generate a fuzzed encoded data for it
         let encoded = generator.generate(&mut fuzzer, &vec![ty]).unwrap();
@@ -492,7 +500,8 @@ mod tests {
 
     #[test]
     fn test_tuple() {
-        // Tuple: A fixed-size collection of potentially different-typed values is encoded, followed by each item's encoding concatenated in turn.
+        // Tuple: A fixed-size collection of potentially different-typed values is
+        // encoded, followed by each item's encoding concatenated in turn.
 
         let mut builder = PortableRegistryBuilder::new();
         let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
@@ -579,11 +588,11 @@ mod tests {
 
     #[test]
     fn test_enum() {
-        // Variant: A tagged union is encoded reseembling this: enum E{ VARIANTA(u32), VARIANTB((u32,u32)) }
+        // Variant: A tagged union is encoded reseembling this: enum E{ VARIANTA(u32),
+        // VARIANTB((u32,u32)) }
         let mut builder = PortableRegistryBuilder::new();
         let u32_type = Type::new(Path::default(), vec![], TypeDefPrimitive::U32, vec![]);
         let u32_type_id = builder.register_type(u32_type);
-
 
         // Tuple
         let tuple_type = Type::new(
@@ -601,18 +610,16 @@ mod tests {
                     .variant("VARIANTA".into(), |v| {
                         v.index(0).fields(
                             Fields::<PortableForm>::named()
-                                .field_portable(|f| {
-                                    f.name("VA".into()).ty(u32_type_id)
-                                }),
+                                .field_portable(|f| f.name("VA".into()).ty(u32_type_id)),
                         )
                     })
-                    .variant("VARIANTB".into(), |v|{v.index(1).fields(
-                        Fields::<PortableForm>::named()
-                            .field_portable(|f| {
+                    .variant("VARIANTB".into(), |v| {
+                        v.index(1).fields(
+                            Fields::<PortableForm>::named().field_portable(|f| {
                                 f.name("VB".into()).ty(tuple_type_id)
                             }),
-
-                    )})
+                        )
+                    }),
             );
         let enum_type_id = builder.register_type(enum_type);
         let registry = builder.finish();
@@ -650,12 +657,7 @@ mod tests {
                 _ => {
                     panic!("Invalid variant index")
                 }
-                
             }
         }
-    
     }
-
-
-
 }
