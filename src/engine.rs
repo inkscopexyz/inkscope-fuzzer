@@ -60,7 +60,6 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-// TODO: Document this better
 // When a failed trace is found, there are 3 possible reasons:
 // 1. The contract panicked during the execution of the deploy, in this case the
 //    failed_properties will be empty, and the trace will contain only the deploy that
@@ -708,6 +707,7 @@ impl Engine {
                             let failed_properties =
                                 self.check_properties(fuzzer, &mut session, &trace)?;
 
+                            // Once we find that at least one property failed, we stop
                             if !failed_properties.is_empty() {
                                 return Ok(Some(FailedTrace {
                                     trace,
