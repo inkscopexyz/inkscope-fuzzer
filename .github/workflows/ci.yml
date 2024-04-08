@@ -24,5 +24,9 @@ jobs:
         run: cargo clippy --all-targets --all-features --no-deps
       - name: Build
         run: cargo build --verbose
+      - name: Install cargo-contract
+        run: cargo install --force --locked cargo-contract
+      - name: Build test contracts
+        run: cd test-contracts && python build.py && cd ..
       - name: Run tests
         run: cargo test --verbose
