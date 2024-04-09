@@ -108,13 +108,15 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_config() {
         // Test from and to file in memory
         let config = Config::default();
-        let file = "test_config.yaml";
-        config.to_yaml_file(file).unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let file = temp_dir.path().join("test_config.yaml");
+        config.to_yaml_file(file.to_str().unwrap()).unwrap();
         let config2 = Config::from_yaml_file(file).unwrap();
         assert_eq!(config, config2);
     }
