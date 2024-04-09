@@ -62,7 +62,7 @@ mod integer_overflow_underflow {
             let init_value = self.value;
 
             // Add the received value
-            self.add(value);
+            let _ = self.add(value);
 
             // Return false if it overflowed
             init_value <= self.value
@@ -75,7 +75,7 @@ mod integer_overflow_underflow {
             let init_value = self.value;
 
             // Subtract the received value
-            self.sub(value);
+            let _ = self.sub(value);
 
             // Return false if it underflowed
             init_value >= self.value
