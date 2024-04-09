@@ -213,4 +213,42 @@ pub mod testing {
             config,
         )
     }
+
+    #[test]
+    fn fuzz_zero_or_test_address_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+        assert!(false);//TODO: This test is not being broken. Seems to not be able to call the modify_admin function with address 0x0
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/zero-or-test-address/vulnerable-example/target/ink/zerocheck.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_zero_or_test_address_remediated() -> Result<(), Box<dyn std::error::Error>> {
+        assert!(false);//TODO: This test is not being broken. Seems to not be able to call the modify_admin function with address 0x0
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/zero-or-test-address/remediated-example/target/ink/zerocheck.contract",
+            ),
+            false,
+            config,
+        )
+    }
 }
