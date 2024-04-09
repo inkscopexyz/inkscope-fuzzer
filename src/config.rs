@@ -78,7 +78,7 @@ impl Default for Config {
             fail_fast: true,
             max_rounds: 1000,
             budget: 1000000000000,
-            accounts: vec![AccountId::new([0; 32]), AccountId::new([1; 32])],
+            accounts: vec![AccountId::new([1; 32]), AccountId::new([2; 32])],
             only_mutable: true,
             max_sequence_type_size: 10,
             max_number_of_transactions: 10,
