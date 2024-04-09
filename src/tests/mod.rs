@@ -175,4 +175,42 @@ pub mod testing {
             config,
         )
     }
+
+    #[test]
+    fn fuzz_assert_violation_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/assert-violation/vulnerable-example/target/ink/assert_violation.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_assert_violation_remediated() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/assert-violation/remediated-example/target/ink/assert_violation.contract",
+            ),
+            false,
+            config,
+        )
+    }
 }
