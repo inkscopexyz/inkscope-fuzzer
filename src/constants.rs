@@ -16,6 +16,7 @@ pub struct Constants {
     pub i64_constants: Vec<i64>,
     pub i128_constants: Vec<i128>,
     pub str_constants: Vec<String>,
+    pub account_id_constants: Vec<[u8; 32]>,
 }
 
 impl Default for Constants {
@@ -32,6 +33,7 @@ impl Default for Constants {
             i64_constants: vec![i64::MIN, -1, 0, 1, i64::MAX],
             i128_constants: vec![i128::MIN, -1, 0, 1, i128::MAX],
             str_constants: vec!["UNK".into()],
+            account_id_constants: vec![[0u8; 32], [1u8; 32]],
         }
     }
 }

@@ -120,6 +120,17 @@ impl Fuzzer {
             None => self.rng.i128(..),
         }
     }
+
+    pub fn fuzz_account_id(&mut self) -> [u8; 32] {
+        match self.rng.choice(&self.constants.account_id_constants) {
+            Some(c) => *c,
+            None => {
+                let mut account_id = [0u8; 32];
+                self.rng.fill(&mut account_id);
+                account_id
+            }
+        }
+    }
 }
 
 #[cfg(test)]

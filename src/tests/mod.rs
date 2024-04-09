@@ -216,7 +216,6 @@ pub mod testing {
 
     #[test]
     fn fuzz_zero_or_test_address_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
-        assert!(false);//TODO: This test is not being broken. Seems to not be able to call the modify_admin function with address 0x0
         // Set up the fuzzer configuration
         let config = Config {
             fail_fast: true,
@@ -235,7 +234,6 @@ pub mod testing {
 
     #[test]
     fn fuzz_zero_or_test_address_remediated() -> Result<(), Box<dyn std::error::Error>> {
-        assert!(false);//TODO: This test is not being broken. Seems to not be able to call the modify_admin function with address 0x0
         // Set up the fuzzer configuration
         let config = Config {
             fail_fast: true,
