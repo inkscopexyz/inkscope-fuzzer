@@ -16,22 +16,12 @@ use anyhow::{
     Ok,
     Result,
 };
-use drink::{
-    frame_support::sp_runtime::traits::Hash as HashTrait,
-    pallet_contracts::{
+use ink_sandbox::{api::{balance_api::BalanceAPI, contracts_api::ContractAPI}, frame_support::{dispatch_context::Value, sp_runtime::traits::Hash}, macros::DefaultSandboxRuntime, pallet_contracts::{
         AddressGenerator,
         DefaultAddressGenerator,
         Determinism,
         ExecReturnValue,
-    },
-    runtime::MinimalRuntime,
-    sandbox::Snapshot,
-    session::{
-        contract_transcode::Value,
-        Session,
-    },
-    ContractBundle,
-    DispatchError,
+    }, DefaultSandbox, DispatchError, Sandbox, Snapshot
 };
 
 use log::{
@@ -139,7 +129,7 @@ impl Deploy {
         data: &[u8],
         salt: &[u8],
     ) -> AccountId {
-        <DefaultAddressGenerator as AddressGenerator<MinimalRuntime>>::contract_address(
+        <DefaultAddressGenerator as AddressGenerator<DefaultSandboxRuntime>>::contract_address(
             caller, code_hash, data, salt,
         )
     }
@@ -404,27 +394,26 @@ impl Engine {
         function_name.starts_with(self.config.property_prefix.as_str())
     }
 
-    fn initialize_state(&self, session: &mut Session<MinimalRuntime>) -> Result<()> {
+    fn initialize_state(&self, sandbox: &mut DefaultSandbox) -> Result<()> {
         debug!("Setting initial state. Give initial budget to caller addresses.");
         // Assigning initial budget to caller addresses
-        let sandbox = session.sandbox();
         for account in &self.config.accounts {
             debug!("  Mint {} to {}", self.config.budget, account);
             sandbox
-                .mint_into(account.clone(), self.config.budget)
+                .mint_into(account, self.config.budget)
                 .map_err(|e| anyhow::anyhow!("Error minting into account: {:?}", e))?;
         }
         Ok(())
     }
 
-    // Exceutes the call on the given session
+    // Exceutes the call on the given sandbox
     fn execute_deploy(
         &self,
-        session: &mut Session<MinimalRuntime>,
+        sandbox: &mut DefaultSandbox,
         deploy: &Deploy,
     ) -> MessageOrDeployResult {
         info!("Deploying contract with data {:?}", deploy);
-        let deployment_result = session.sandbox().deploy_contract(
+        let deployment_result = sandbox.deploy_contract(
             deploy.contract_bytes.clone(),
             0,
             deploy.data.clone(),
@@ -437,17 +426,17 @@ impl Engine {
         deployment_result.result.map(|res| res.result).into()
     }
 
-    // Exceutes the message on the given session
+    // Exceutes the message on the given sandbox
     fn execute_message(
         &self,
-        session: &mut Session<MinimalRuntime>,
+        sandbox: &mut DefaultSandbox,
         message: &Message,
     ) -> MessageOrDeployResult {
         // TODO: This result has to be checked for reverts. In the flags field we can find
         // the revert flag
         info!("Sending message with data {:?}", message);
-        session
-            .sandbox()
+      
+            sandbox
             .call_contract(
                 message.callee.clone(),
                 message.endowment,
@@ -465,7 +454,7 @@ impl Engine {
     fn check_properties(
         &self,
         fuzzer: &mut Fuzzer,
-        session: &mut Session<MinimalRuntime>,
+        sandbox: &mut DefaultSandbox,
         trace: &Trace,
     ) -> Result<Vec<Message>> {
         let mut failed_properties = vec![];
@@ -474,7 +463,7 @@ impl Engine {
         // Properties should not affect the state
         // We save a snapshot before the properties so we can restore it later.
         // Effectively a dry-run
-        let checkpoint = session.sandbox().take_snapshot();
+        let checkpoint = sandbox.take_snapshot();
         let properties = self.properties.clone();
 
         // For each property, we will only try to break it once. If we find an argument
@@ -500,11 +489,11 @@ impl Engine {
                 let property_message =
                     self.generate_message(fuzzer, property, &contract_address)?;
 
-                let result = self.execute_message(session, &property_message);
+                let result = self.execute_message(sandbox, &property_message);
 
                 // We restore the state to the snapshot taken before executing the
                 // property
-                session.sandbox().restore_snapshot(checkpoint.clone());
+                sandbox.restore_snapshot(checkpoint.clone());
 
                 match result {
                     MessageOrDeployResult::Unhandled(e) => {
@@ -569,18 +558,18 @@ impl Engine {
 
     fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<FailedTrace>> {
         debug!("Starting run");
-        let mut session: Session<MinimalRuntime> = Session::<MinimalRuntime>::new()?;
+        let mut sandbox = DefaultSandbox::default();
 
         // Check if the initial state is already in the cache
         let mut current_state = match self.snapshot_cache.get(&0u64) {
             Some(init_snapshot) => {
-                session.sandbox().restore_snapshot(init_snapshot.clone());
+                sandbox.restore_snapshot(init_snapshot.clone());
                 Some(init_snapshot)
             }
             _ => {
-                self.initialize_state(&mut session)?;
+                self.initialize_state(&mut sandbox)?;
                 self.snapshot_cache
-                    .insert(0, session.sandbox().take_snapshot());
+                    .insert(0, sandbox.take_snapshot());
                 None
             }
         };
@@ -606,15 +595,15 @@ impl Engine {
                 debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
                 // The trace was not in the cache, apply the previous state if any
                 if let Some(snapshot) = current_state {
-                    debug!("The current state is not yet materialized in the session, restoring current state.");
-                    session.sandbox().restore_snapshot(snapshot.clone());
+                    debug!("The current state is not yet materialized in the sandbox, restoring current state.");
+                    sandbox.restore_snapshot(snapshot.clone());
                 };
-                // The current state is already in the session. Next step needs not to
+                // The current state is already in the sandbox. Next step needs not to
                 // load it from the `current_state`
                 current_state = None;
 
                 // Execute the action
-                let result = self.execute_deploy(&mut session, &trace.deploy);
+                let result = self.execute_deploy(&mut sandbox, &trace.deploy);
 
                 match result {
                     MessageOrDeployResult::Unhandled(e) => {
@@ -636,7 +625,7 @@ impl Engine {
                     MessageOrDeployResult::Success(_) => {
                         // If it did not revert or panic we check the properties
                         let failed_properties =
-                            self.check_properties(fuzzer, &mut session, &trace)?;
+                            self.check_properties(fuzzer, &mut sandbox, &trace)?;
 
                         if !failed_properties.is_empty() {
                             return Ok(Some(FailedTrace {
@@ -647,7 +636,7 @@ impl Engine {
 
                         // If the execution went ok then store the new state in the cache
                         self.snapshot_cache
-                            .insert(trace.hash(), session.sandbox().take_snapshot());
+                            .insert(trace.hash(), sandbox.take_snapshot());
                     }
                 }
             }
@@ -674,16 +663,16 @@ impl Engine {
 
                     // The trace was not in the cache, apply the previous state if any
                     if let Some(snapshot) = current_state {
-                        debug!("At iteration {}, the current state is not yet materialized in the session, restoring current state.", i);
-                        session.sandbox().restore_snapshot(snapshot.clone());
+                        debug!("At iteration {}, the current state is not yet materialized in the sandbox, restoring current state.", i);
+                        sandbox.restore_snapshot(snapshot.clone());
                     }
-                    // The current state is already in the session. Next step needs not to
+                    // The current state is already in the sandbox. Next step needs not to
                     // load it from the `current_state`
                     current_state = None;
 
                     // Execute the action
                     let result =
-                        self.execute_message(&mut session, trace.last_message()?);
+                        self.execute_message(&mut sandbox, trace.last_message()?);
 
                     match result {
                         MessageOrDeployResult::Unhandled(e) => {
@@ -705,7 +694,7 @@ impl Engine {
                         MessageOrDeployResult::Success(_) => {
                             // If it did not revert or panic we check the properties
                             let failed_properties =
-                                self.check_properties(fuzzer, &mut session, &trace)?;
+                                self.check_properties(fuzzer, &mut sandbox, &trace)?;
 
                             // Once we find that at least one property failed, we stop
                             if !failed_properties.is_empty() {
@@ -718,7 +707,7 @@ impl Engine {
                             // If the execution returned Ok(()) then store the new state
                             // in the cache
                             self.snapshot_cache
-                                .insert(trace.hash(), session.sandbox().take_snapshot());
+                                .insert(trace.hash(), sandbox.take_snapshot());
                         }
                     }
                 }

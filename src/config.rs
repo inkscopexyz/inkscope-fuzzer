@@ -1,5 +1,5 @@
 use anyhow::Result;
-use drink::{
+use ink_sandbox::{
     frame_support::sp_runtime::traits::Bounded,
     Weight,
 };

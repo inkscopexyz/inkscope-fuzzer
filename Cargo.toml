@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 drink = { git = "https://github.com/inkscopexyz/inkscope-drink.git",rev = "b25b886" }
+ink_sandbox = {path = "../ink/crates/e2e/sandbox"}
 fastrand = "2.0.1"
 hex = "0.4.3"
 log = "0.4.20"
