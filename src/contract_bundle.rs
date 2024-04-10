@@ -1,4 +1,5 @@
-//! This module provides simple utilities for loading and parsing `.contract` files in context of `drink` tests.
+//! This module provides simple utilities for loading and parsing `.contract` files in
+//! context of `drink` tests.
 
 use std::sync::Arc;
 
@@ -33,12 +34,12 @@ impl ContractBundle {
             anyhow::format_err!("Failed to load the contract file:\n{e:?}")
         })?;
 
-        let ink_metadata = serde_json::from_value(serde_json::Value::Object(metadata.abi))
-            .map_err(|e| {
-                anyhow::format_err!(
-                    "Failed to parse metadata from the contract file:\n{e:?}"
-                )
-            })?;
+        let ink_metadata = serde_json::from_value(serde_json::Value::Object(
+            metadata.abi,
+        ))
+        .map_err(|e| {
+            anyhow::format_err!("Failed to parse metadata from the contract file:\n{e:?}")
+        })?;
 
         let transcoder = Arc::new(ContractMessageTranscoder::new(ink_metadata));
 

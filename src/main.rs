@@ -1,13 +1,13 @@
 mod cli;
 mod config;
 mod constants;
+mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
 #[cfg(test)]
 mod tests;
 mod types;
-mod contract_bundle;
 
 use crate::config::Config;
 use anyhow::{

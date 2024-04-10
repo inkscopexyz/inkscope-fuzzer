@@ -1,11 +1,15 @@
 use crate::{
-    config::Config, contract_bundle::ContractBundle, fuzzer::Fuzzer, generator::Generator, types::{
+    config::Config,
+    contract_bundle::ContractBundle,
+    fuzzer::Fuzzer,
+    generator::Generator,
+    types::{
         AccountId,
         Balance,
         CodeHash,
         Hashing,
         TraceHash,
-    }
+    },
 };
 
 use anyhow::{
@@ -14,12 +18,23 @@ use anyhow::{
     Result,
 };
 use contract_transcode::Value;
-use ink_sandbox::{api::{balance_api::BalanceAPI, contracts_api::ContractAPI}, frame_support::sp_runtime::traits::Hash, macros::DefaultSandboxRuntime, pallet_contracts::{
+use ink_sandbox::{
+    api::{
+        balance_api::BalanceAPI,
+        contracts_api::ContractAPI,
+    },
+    frame_support::sp_runtime::traits::Hash,
+    macros::DefaultSandboxRuntime,
+    pallet_contracts::{
         AddressGenerator,
         DefaultAddressGenerator,
         Determinism,
         ExecReturnValue,
-    }, DefaultSandbox, DispatchError, Sandbox, Snapshot
+    },
+    DefaultSandbox,
+    DispatchError,
+    Sandbox,
+    Snapshot,
 };
 
 use log::{
@@ -433,8 +448,8 @@ impl Engine {
         // TODO: This result has to be checked for reverts. In the flags field we can find
         // the revert flag
         info!("Sending message with data {:?}", message);
-      
-            sandbox
+
+        sandbox
             .call_contract(
                 message.callee.clone(),
                 message.endowment,
@@ -566,8 +581,7 @@ impl Engine {
             }
             _ => {
                 self.initialize_state(&mut sandbox)?;
-                self.snapshot_cache
-                    .insert(0, sandbox.take_snapshot());
+                self.snapshot_cache.insert(0, sandbox.take_snapshot());
                 None
             }
         };

@@ -1,7 +1,7 @@
-
-
 use ink_sandbox::{
-    frame_system, pallet_balances, macros::DefaultSandboxRuntime
+    frame_system,
+    macros::DefaultSandboxRuntime,
+    pallet_balances,
 };
 
 pub type BalanceOf<R> = <R as pallet_balances::Config>::Balance;
