@@ -139,7 +139,8 @@ pub mod testing {
     }
 
     #[test]
-    fn fuzz_iterators_over_indexing_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+    fn fuzz_iterators_over_indexing_vulnerable() -> Result<(), Box<dyn std::error::Error>>
+    {
         // Set up the fuzzer configuration
         let config = Config {
             fail_fast: true,
@@ -158,7 +159,8 @@ pub mod testing {
     }
 
     #[test]
-    fn fuzz_iterators_over_indexing_remediated() -> Result<(), Box<dyn std::error::Error>> {
+    fn fuzz_iterators_over_indexing_remediated() -> Result<(), Box<dyn std::error::Error>>
+    {
         // Set up the fuzzer configuration
         let config = Config {
             fail_fast: true,

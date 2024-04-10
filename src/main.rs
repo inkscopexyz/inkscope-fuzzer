@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod constants;
+mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
