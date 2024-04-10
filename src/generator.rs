@@ -102,9 +102,17 @@ impl<'a> Generator<'a> {
         let mut encoded = Vec::new();
         // No length is included in the encoding as it is known at decoding
         let param_type_def = self.get_typedef(array.type_param.id)?;
-        for _i in 0..array.len {
-            let mut param_encoded = self.generate_argument(fuzzer, &param_type_def)?;
-            encoded.append(&mut param_encoded);
+
+        // If the array is compatible with the accountId type we use the accountId constants
+        if array.len == 32 && param_type_def==TypeDef::Primitive(TypeDefPrimitive::U8){
+           encoded.append(&mut fuzzer.fuzz_account_id().encode())
+        }
+        else{
+            // Otherwise we generate the array with the fuzzed values
+            for _i in 0..array.len {
+                let mut param_encoded = self.generate_argument(fuzzer, &param_type_def)?;
+                encoded.append(&mut param_encoded);
+            }
         }
         Ok(encoded)
     }

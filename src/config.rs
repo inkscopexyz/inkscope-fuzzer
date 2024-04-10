@@ -78,7 +78,7 @@ impl Default for Config {
             fail_fast: true,
             max_rounds: 1000,
             budget: 1000000000000,
-            accounts: vec![AccountId::new([0; 32]), AccountId::new([1; 32])],
+            accounts: vec![AccountId::new([1; 32]), AccountId::new([2; 32])],
             only_mutable: true,
             max_sequence_type_size: 10,
             max_number_of_transactions: 10,
@@ -108,13 +108,15 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_config() {
         // Test from and to file in memory
         let config = Config::default();
-        let file = "test_config.yaml";
-        config.to_yaml_file(file).unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let file = temp_dir.path().join("test_config.yaml");
+        config.to_yaml_file(file.to_str().unwrap()).unwrap();
         let config2 = Config::from_yaml_file(file).unwrap();
         assert_eq!(config, config2);
     }

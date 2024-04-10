@@ -137,4 +137,116 @@ pub mod testing {
             config,
         )
     }
+
+    #[test]
+    fn fuzz_iterators_over_indexing_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/iterators-over-indexing/vulnerable-example/target/ink/iterators_over_indexing.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_iterators_over_indexing_remediated() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/iterators-over-indexing/remediated-example/target/ink/iterators_over_indexing.contract",
+            ),
+            false,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_assert_violation_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/assert-violation/vulnerable-example/target/ink/assert_violation.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_assert_violation_remediated() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            only_mutable: false,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/assert-violation/remediated-example/target/ink/assert_violation.contract",
+            ),
+            false,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_zero_or_test_address_vulnerable() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/zero-or-test-address/vulnerable-example/target/ink/zerocheck.contract",
+            ),
+            true,
+            config,
+        )
+    }
+
+    #[test]
+    fn fuzz_zero_or_test_address_remediated() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up the fuzzer configuration
+        let config = Config {
+            fail_fast: true,
+            max_rounds: 100,
+            max_number_of_transactions: 50,
+            ..Default::default()
+        };
+        test_contract(
+            PathBuf::from(
+                "./test-contracts/coinfabrik-test-contracts/zero-or-test-address/remediated-example/target/ink/zerocheck.contract",
+            ),
+            false,
+            config,
+        )
+    }
 }

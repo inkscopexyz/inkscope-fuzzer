@@ -2355,6 +2355,7 @@ dependencies = [
  "scale-info",
  "serde",
  "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]
