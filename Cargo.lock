@@ -1859,6 +1859,7 @@ dependencies = [
 [[package]]
 name = "ink_sandbox"
 version = "5.0.0"
+source = "git+https://github.com/inkscopexyz/ink.git#c5ea3636338d3bb39d432e7bdbb730a8fbbe0472"
 dependencies = [
  "frame-metadata",
  "frame-support",
