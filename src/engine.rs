@@ -1,14 +1,11 @@
 use crate::{
-    config::Config,
-    fuzzer::Fuzzer,
-    generator::Generator,
-    types::{
+    config::Config, contract_bundle::ContractBundle, fuzzer::Fuzzer, generator::Generator, types::{
         AccountId,
         Balance,
         CodeHash,
         Hashing,
         TraceHash,
-    },
+    }
 };
 
 use anyhow::{
@@ -16,7 +13,8 @@ use anyhow::{
     Ok,
     Result,
 };
-use ink_sandbox::{api::{balance_api::BalanceAPI, contracts_api::ContractAPI}, frame_support::{dispatch_context::Value, sp_runtime::traits::Hash}, macros::DefaultSandboxRuntime, pallet_contracts::{
+use contract_transcode::Value;
+use ink_sandbox::{api::{balance_api::BalanceAPI, contracts_api::ContractAPI}, frame_support::sp_runtime::traits::Hash, macros::DefaultSandboxRuntime, pallet_contracts::{
         AddressGenerator,
         DefaultAddressGenerator,
         Determinism,

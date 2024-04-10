@@ -7,6 +7,7 @@ mod generator;
 #[cfg(test)]
 mod tests;
 mod types;
+mod contract_bundle;
 
 use crate::config::Config;
 use anyhow::{
