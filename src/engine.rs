@@ -228,7 +228,6 @@ impl From<Result<ExecReturnValue, DispatchError>> for MessageOrDeployResult {
 
 pub struct Engine {
     // Contract Info
-    _contract_path: PathBuf,
     contract: ContractBundle,
 
     // Rapid access to function info
@@ -315,13 +314,12 @@ impl Engine {
 
     pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
         info!("Loading contract from {:?}", contract_path);
-        let contract = ContractBundle::load(&contract_path)?;
+        let contract = ContractBundle::load(contract_path)?;
 
         // TODO: fix callers
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
         let mut engine = Self {
             // Contract Info
-            _contract_path: contract_path,
             contract,
 
             // Rapid access to function info
