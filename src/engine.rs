@@ -433,7 +433,6 @@ impl Engine {
             self.config.gas_limit,
             None,
         );
-
         deployment_result.result.map(|res| res.result).into()
     }
 
@@ -443,10 +442,7 @@ impl Engine {
         sandbox: &mut DefaultSandbox,
         message: &Message,
     ) -> MessageOrDeployResult {
-        // TODO: This result has to be checked for reverts. In the flags field we can find
-        // the revert flag
         info!("Sending message with data {:?}", message);
-
         sandbox
             .call_contract(
                 message.callee.clone(),
@@ -566,20 +562,24 @@ impl Engine {
     //     });
     //     Ok(())
     // }
-
     fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<FailedTrace>> {
         debug!("Starting run");
+
+        /// Hardcoded empty trace hash
+        const EMPTY_TRACE_HASH: u64 = 0;
+
         let mut sandbox = DefaultSandbox::default();
 
         // Check if the initial state is already in the cache
-        let mut current_state = match self.snapshot_cache.get(&0u64) {
+        let mut current_state = match self.snapshot_cache.get(&EMPTY_TRACE_HASH) {
             Some(init_snapshot) => {
                 sandbox.restore_snapshot(init_snapshot.clone());
                 Some(init_snapshot)
             }
             _ => {
                 self.initialize_state(&mut sandbox)?;
-                self.snapshot_cache.insert(0, sandbox.take_snapshot());
+                self.snapshot_cache
+                    .insert(EMPTY_TRACE_HASH, sandbox.take_snapshot());
                 None
             }
         };
