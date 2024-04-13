@@ -549,19 +549,7 @@ impl Engine {
         println!("Elapsed time: {:?}", start_time.elapsed());
         Ok(CampaignResult { failed_traces })
     }
-    // pub fn run_campaign_concurrent(&mut self, max_iterations: usize) -> Result<()> {
-    //     let num_cpus = rayon::current_num_threads();
-    //     println!("Number of CPU cores: {}", num_cpus);
 
-    //     // Execute the main logic in parallel using Rayon
-    //     (0..num_cpus).into_par_iter().for_each(|_| {
-    //         if let Err(err) = self.run_campaign(1000) {
-    //             eprintln!("Error: {:?}", err);
-    //         }
-    //         println!("Thread {:?} finished", thread::current().id());
-    //     });
-    //     Ok(())
-    // }
     fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<FailedTrace>> {
         debug!("Starting run");
 
