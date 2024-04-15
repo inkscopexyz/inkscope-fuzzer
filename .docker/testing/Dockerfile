@@ -2,7 +2,6 @@
 FROM rust:1.76
 RUN rustup component add rust-src && cargo install --force --locked --version 3.2.0 cargo-contract
 WORKDIR /inkscope-fuzzer
-COPY config.yaml .
 COPY Cargo.toml .
 COPY src/ ./src/
 COPY test-contracts/ ./test-contracts/
