@@ -28,7 +28,7 @@ By incorporating property-based testing through Inkscope fuzzer, developers can 
 
 2. Run the fuzzer
 ```bash
-    docker run -it inkscope-fuzzer /path/to/file.contract
+    docker run -v "/path/of/your/contract/project:contract" inkscope-fuzzer contract/file.contract
 ```
 
 #### B. Local Stack
@@ -168,7 +168,7 @@ In order to test the fuzzer, you need to follow the steps below:
 ```
 2. Run the tests
 ```bash
-    docker run -it inkscope-fuzzer-testing
+    docker run inkscope-fuzzer-testing
 ```
 
 
