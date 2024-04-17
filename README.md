@@ -26,9 +26,15 @@ By incorporating property-based testing through Inkscope fuzzer, developers can 
     docker build -t inkscope-fuzzer -f ./.docker/inkscope-fuzzer/Dockerfile .
 ```
 
-2. Run the fuzzer
+2. Run the fuzzer from the current folder
 ```bash
-    docker run -v "/path/of/your/contract/project:contract" inkscope-fuzzer contract/file.contract
+    docker run -v ".:/contract" inkscope-fuzzer file.contract
+```
+
+3. Optional, add an alias
+```bash
+    alias inkscope-fuzzer-docker="docker run -v ".:/contract" inkscope-fuzzer"
+    inkscope-fuzzer-docker file.contract
 ```
 
 #### B. Local Stack
