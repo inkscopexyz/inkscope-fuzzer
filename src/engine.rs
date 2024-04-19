@@ -560,22 +560,21 @@ impl Engine {
     }
 
 
-    fn init<'a>(&'a self, sandbox: &mut DefaultSandbox, local_snapshot_cache: &'a mut HashMap<u64, Snapshot>, current_snapshot: &mut Option<&'a Snapshot>) -> Result<()>{
+    fn init<'a>(&'a self, sandbox: &mut DefaultSandbox, local_snapshot_cache: &mut HashMap<u64, Snapshot> ) -> Result<Option<&'a Snapshot>>{
 
         /// Hardcoded empty trace hash
          const EMPTY_TRACE_HASH: u64 = 0;
          // Check if the initial state is already in the cache
-         *current_snapshot = match self.snapshot_cache.get(&EMPTY_TRACE_HASH) {
+         match self.snapshot_cache.get(&EMPTY_TRACE_HASH) {
              Some(init_snapshot) => {
-                 Some(init_snapshot)
+                 Ok(Some(init_snapshot))
              }
              _ => {
                  self.initialize_state(sandbox)?;
                  local_snapshot_cache.insert(EMPTY_TRACE_HASH, sandbox.take_snapshot());
-                 None
+                Ok(None)
              }
-         };
-         Ok(())
+         }
     }
 
     
@@ -644,10 +643,8 @@ impl Engine {
         //Sandbox for the emulation
         let mut sandbox = DefaultSandbox::default();
         let mut local_snapshot_cache =  HashMap::<u64, Snapshot>::new();
-        let mut current_snapshot = None;
-        
-        self.init(&mut sandbox, &mut local_snapshot_cache, &mut current_snapshot)?;
-        
+        let mut current_snapshot=  self.init(&mut sandbox, &mut local_snapshot_cache)?;
+       
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //  Deploy the main contract to be fuzzed using a random constructor with fuzzed
         // argumets
