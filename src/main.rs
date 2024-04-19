@@ -31,7 +31,10 @@ fn main() -> Result<()> {
 
     // Used for developement when the Config format is changed
     // Config::default().to_yaml_file(&cli.config)?;
-    let config = Config::from_yaml_file(&cli.config).expect("failed to parse yaml file");
+    let config = match cli.config {
+        Some(config) => Config::from_yaml_file(config)?,
+        None => Config::default(),
+    };
     let contract_path = cli.contract;
 
     let mut engine = Engine::new(contract_path, config)?;

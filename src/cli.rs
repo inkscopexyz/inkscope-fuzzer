@@ -10,6 +10,6 @@ pub struct Cli {
     #[clap(index = 1)]
     pub contract: PathBuf,
 
-    #[arg(short, long, default_value = "config.yaml")]
-    pub config: PathBuf,
+    #[arg(short, long)]
+    pub config: Option<PathBuf>,
 }
