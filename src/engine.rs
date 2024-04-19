@@ -56,7 +56,7 @@ use std::{
         Hash as StdHash,
         Hasher,
     },
-    path::PathBuf,
+    path::PathBuf, thread::LocalKey,
 };
 
 pub struct CampaignResult {
@@ -186,12 +186,10 @@ impl Trace {
         self.deploy.address.clone()
     }
 
-    pub fn last_message(&self) -> Result<&Message> {
-        match self.messages.last() {
-            Some(message) => Ok(message),
-            None => Err(anyhow!("No messages in the trace")),
-        }
+    pub fn last_message(&self) -> Option<&Message> {
+        self.messages.last()
     }
+
 }
 
 pub enum MessageOrDeployResult {
@@ -456,7 +454,15 @@ impl Engine {
             .result
             .into()
     }
+    pub fn execute_last(&self,
+        sandbox: &mut DefaultSandbox,
+        trace: &Trace) -> MessageOrDeployResult{
+            match trace.last_message() {
+                Some(last_message) => self.execute_message(sandbox, last_message),
+                None => self.execute_deploy(sandbox, &trace.deploy)
+            }
 
+        }
     // Error if a property fail
     fn check_properties(
         &self,
@@ -537,41 +543,111 @@ impl Engine {
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
 
         for _ in 0..max_iterations {
-            if let Some(failed_trace) = self.run(&mut fuzzer)? {
+            let (x,y) = self.run(&mut fuzzer)?;
+            if let Some(failed_trace) = y {
                 // Fail fast if a property fails
                 failed_traces.push(failed_trace);
                 if fail_fast {
                     break;
                 }
             }
+            self.snapshot_cache.extend(x);
+
         }
 
         println!("Elapsed time: {:?}", start_time.elapsed());
         Ok(CampaignResult { failed_traces })
     }
 
-    fn run(&mut self, fuzzer: &mut Fuzzer) -> Result<Option<FailedTrace>> {
-        debug!("Starting run");
+
+    fn init<'a>(&'a self, sandbox: &mut DefaultSandbox, local_snapshot_cache: &'a mut HashMap<u64, Snapshot>, current_snapshot: &mut Option<&'a Snapshot>) -> Result<()>{
 
         /// Hardcoded empty trace hash
-        const EMPTY_TRACE_HASH: u64 = 0;
+         const EMPTY_TRACE_HASH: u64 = 0;
+         // Check if the initial state is already in the cache
+         *current_snapshot = match self.snapshot_cache.get(&EMPTY_TRACE_HASH) {
+             Some(init_snapshot) => {
+                 Some(init_snapshot)
+             }
+             _ => {
+                 self.initialize_state(sandbox)?;
+                 local_snapshot_cache.insert(EMPTY_TRACE_HASH, sandbox.take_snapshot());
+                 None
+             }
+         };
+         Ok(())
+    }
 
+    
+    fn run_trace<'a>(&'a self, fuzzer: &mut Fuzzer, sandbox: &mut DefaultSandbox, local_snapshot_cache: &mut HashMap<u64, Snapshot>, current_snapshot: &mut Option<&'a Snapshot>, trace: &Trace) -> Result<Option<FailedTrace>>
+    {
+
+        // CACHE: Check we happened to choose the same constructor as a previous run
+        match self.snapshot_cache.get(&trace.hash()) {
+            Some(snapshot) => {
+                debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
+                // The trace was already in the cache set current pending state
+                *current_snapshot = Some(snapshot);
+                return Ok(None);
+            }
+            None => {
+                debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
+                // The trace was not in the cache, apply the previous state if any
+                if let Some(snapshot) = current_snapshot {
+                    debug!("The current state is not yet materialized in the sandbox, restoring current state.");
+                    sandbox.restore_snapshot(snapshot.clone());
+                };
+                *current_snapshot = None;
+               
+                // Execute the action
+                match self.execute_last(sandbox, &trace) {
+                    MessageOrDeployResult::Unhandled(e) => {
+                        // If the error is not a ContractTrapped, we panic because
+                        // is not an expected behavior
+                        panic!("Error: {:?}", e);
+                    }
+                    MessageOrDeployResult::Trapped => {
+                        Ok(Some(FailedTrace {
+                            trace:trace.clone(),
+                            failed_properties: vec![],
+                        }))
+                    }
+                    MessageOrDeployResult::Reverted => {
+                        // If the deployment reverts we just ignore this execution and
+                        // start a new trace again
+                        Ok(None)
+                    }
+                    MessageOrDeployResult::Success(_) => {
+                        // If it did not revert or panic we check the properties
+                        let failed_properties =
+                            self.check_properties(fuzzer, sandbox, &trace)?;
+                        if !failed_properties.is_empty() {
+                            Ok(Some(FailedTrace {
+                                trace: trace.clone(),
+                                failed_properties,
+                            }))
+                        }else{
+                            // If the execution went ok then store the new state in the cache
+                            local_snapshot_cache.insert(trace.hash(), sandbox.take_snapshot());
+                            Ok(None)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn run(&self, fuzzer: &mut Fuzzer) -> Result<(HashMap<u64, Snapshot>, Option<FailedTrace>)> {
+        debug!("Starting run");
+
+        //Local mutable state... 
+        //Sandbox for the emulation
         let mut sandbox = DefaultSandbox::default();
-
-        // Check if the initial state is already in the cache
-        let mut current_state = match self.snapshot_cache.get(&EMPTY_TRACE_HASH) {
-            Some(init_snapshot) => {
-                sandbox.restore_snapshot(init_snapshot.clone());
-                Some(init_snapshot)
-            }
-            _ => {
-                self.initialize_state(&mut sandbox)?;
-                self.snapshot_cache
-                    .insert(EMPTY_TRACE_HASH, sandbox.take_snapshot());
-                None
-            }
-        };
-
+        let mut local_snapshot_cache =  HashMap::<u64, Snapshot>::new();
+        let mut current_snapshot = None;
+        
+        self.init(&mut sandbox, &mut local_snapshot_cache, &mut current_snapshot)?;
+        
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //  Deploy the main contract to be fuzzed using a random constructor with fuzzed
         // argumets
@@ -581,65 +657,10 @@ impl Engine {
 
         // Start the trace with a deployment
         let mut trace = Trace::new(constructor);
-
-        // CACHE: Check we happened to choose the same constructor as a previous run
-        match self.snapshot_cache.get(&trace.hash()) {
-            Some(snapshot) => {
-                debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
-                // The trace was already in the cache set current pending state
-                current_state = Some(snapshot);
-            }
-            None => {
-                debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
-                // The trace was not in the cache, apply the previous state if any
-                if let Some(snapshot) = current_state {
-                    debug!("The current state is not yet materialized in the sandbox, restoring current state.");
-                    sandbox.restore_snapshot(snapshot.clone());
-                };
-                // The current state is already in the sandbox. Next step needs not to
-                // load it from the `current_state`
-                current_state = None;
-
-                // Execute the action
-                let result = self.execute_deploy(&mut sandbox, &trace.deploy);
-
-                match result {
-                    MessageOrDeployResult::Unhandled(e) => {
-                        // If the error is not a ContractTrapped, we panic because
-                        // is not an expected behavior
-                        panic!("Error: {:?}", e);
-                    }
-                    MessageOrDeployResult::Trapped => {
-                        return Ok(Some(FailedTrace {
-                            trace,
-                            failed_properties: vec![],
-                        }));
-                    }
-                    MessageOrDeployResult::Reverted => {
-                        // If the deployment reverts we just ignore this execution and
-                        // start a new trace again
-                        return Ok(None);
-                    }
-                    MessageOrDeployResult::Success(_) => {
-                        // If it did not revert or panic we check the properties
-                        let failed_properties =
-                            self.check_properties(fuzzer, &mut sandbox, &trace)?;
-
-                        if !failed_properties.is_empty() {
-                            return Ok(Some(FailedTrace {
-                                trace,
-                                failed_properties,
-                            }));
-                        }
-
-                        // If the execution went ok then store the new state in the cache
-                        self.snapshot_cache
-                            .insert(trace.hash(), sandbox.take_snapshot());
-                    }
-                }
-            }
-        };
-
+        if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, &mut local_snapshot_cache, &mut current_snapshot, &trace)? {
+            return Ok((local_snapshot_cache, Some(failed_trace)));
+        }
+ 
         let max_txs = self.config.max_number_of_transactions;
         let callee = trace.contract();
         for i in 0..max_txs {
@@ -649,70 +670,15 @@ impl Engine {
             let message = self.generate_message(fuzzer, message_selector, &callee)?;
             trace.push(message);
 
-            // CACHE: Check we happened to choose the same trace prolog as a previous run
-            match self.snapshot_cache.get(&trace.hash()) {
-                Some(snapshot) => {
-                    debug!("Cahe HIT: at iteration {}, Same trace prolog was choosen and executed before before, reloading state from cache", i);
-                    // The trace is already in the cache set current state
-                    current_state = Some(snapshot);
-                }
-                None => {
-                    debug!("Cahe MISS: Same trace prolog was never executed before");
-
-                    // The trace was not in the cache, apply the previous state if any
-                    if let Some(snapshot) = current_state {
-                        debug!("At iteration {}, the current state is not yet materialized in the sandbox, restoring current state.", i);
-                        sandbox.restore_snapshot(snapshot.clone());
-                    }
-                    // The current state is already in the sandbox. Next step needs not to
-                    // load it from the `current_state`
-                    current_state = None;
-
-                    // Execute the action
-                    let result =
-                        self.execute_message(&mut sandbox, trace.last_message()?);
-
-                    match result {
-                        MessageOrDeployResult::Unhandled(e) => {
-                            // If the error is not a ContractTrapped, we panic because
-                            // is not an expected behavior
-                            panic!("Error: {:?}", e);
-                        }
-                        MessageOrDeployResult::Trapped => {
-                            return Ok(Some(FailedTrace {
-                                trace,
-                                failed_properties: vec![], /* TODO: Add comment
-                                                            * explaining this case */
-                            }));
-                        }
-                        MessageOrDeployResult::Reverted => {
-                            trace.messages.pop();
-                            continue;
-                        }
-                        MessageOrDeployResult::Success(_) => {
-                            // If it did not revert or panic we check the properties
-                            let failed_properties =
-                                self.check_properties(fuzzer, &mut sandbox, &trace)?;
-
-                            // Once we find that at least one property failed, we stop
-                            if !failed_properties.is_empty() {
-                                return Ok(Some(FailedTrace {
-                                    trace,
-                                    failed_properties,
-                                }));
-                            }
-
-                            // If the execution returned Ok(()) then store the new state
-                            // in the cache
-                            self.snapshot_cache
-                                .insert(trace.hash(), sandbox.take_snapshot());
-                        }
-                    }
-                }
-            };
-        }
-        Ok(None)
+            if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, &mut local_snapshot_cache, &mut current_snapshot, &trace)? {
+                return Ok((local_snapshot_cache, Some(failed_trace)));
+            }
+    
+        };
+        
+        Ok((local_snapshot_cache, None))
     }
+
 
     pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
         let output = Output::new(&self.contract);
