@@ -1,0 +1,8 @@
+[book]
+authors = ["0xLucca"]
+language = "en"
+multilingual = false
+src = "src"
+title = "inkscope-fuzzer"
+
+[output.html]
