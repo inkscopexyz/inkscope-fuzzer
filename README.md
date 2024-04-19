@@ -10,7 +10,53 @@ If the fuzzer discovers a property violation, it prints the complete execution t
 
 By incorporating property-based testing through Inkscope fuzzer, developers can enhance the reliability and security of their Ink! smart contracts before deployment on the Polkadot network.
 
-## Initial Example
+>  The ink contract you want to fuzz-test must use ^5.0.0 version of the ink! crate
+
+### 🚀 How to run the fuzzer
+
+- Clone this repository and enter the project folder
+```bash
+    git clone https://github.com/inkscopexyz/inkscope-fuzzer.git && cd inkscope-fuzzer
+```
+
+#### A. Docker
+
+1. Build the inkscope-fuzzer docker image
+```bash
+    docker build -t inkscope-fuzzer -f ./.docker/inkscope-fuzzer/Dockerfile .
+```
+
+2. Run the fuzzer from the current folder
+```bash
+    docker run -v ".:/contract" inkscope-fuzzer file.contract
+```
+
+3. Optional, add an alias
+```bash
+    alias inkscope-fuzzer-docker="docker run -v ".:/contract" inkscope-fuzzer"
+    inkscope-fuzzer-docker file.contract
+```
+
+#### B. Local Stack
+
+- ⚠️ Requirements:
+  - rust = 1.76
+  - cargo-contract 3.2.0
+
+1. Build the project
+```bash
+    cargo build --release
+```
+
+2. Write the properties that you want to test and compile your contract with the `fuzz-testing` feature enabled.
+    - Refer to the [write-properties document](docs/write-properties.md) for more information.
+    
+3. Run the fuzzer
+```bash
+    ./target/release/inkscope-fuzzer "/path/to/file.contract"
+```
+
+### Initial Example
 
 Let's start with a simple example to understand how the fuzzer works.
 
@@ -104,8 +150,8 @@ mod ityfuzz {
 Once the property is written, we can compile the contract:
 
 ```bash
-    cd test-contracts
-    . ./build.sh
+    cd test-contracts/ityfuzz
+    cargo contract build --features fuzz-testing
 ```
 
 And then execute the fuzzer against it and check the output
@@ -115,46 +161,20 @@ And then execute the fuzzer against it and check the output
 
 If the fuzzer finds a property violation, it will print the execution trace and the violated property.
 
-## Usage
+### ⚙️ Testing
 
 - ⚠️ Requirements:
-  - rust = 1.76
-  - cargo-contract 3.2.0
-  - The ink contract you want to fuzz-test must use ^5.0.0 version of the ink! crate
-
-### ⚙️ Test
+  - Docker
 
 In order to test the fuzzer, you need to follow the steps below:
 
-1. Compile the test contracts
+1. Build the testing docker image
 ```bash
-    cd test-contracts
-    . ./build.sh
+    docker build -t inkscope-fuzzer-testing -f ./.docker/testing/Dockerfile .
 ```
 2. Run the tests
 ```bash
-    cargo test
-```
-
-### 🚀 Run the fuzzer
-
-#### A. Development
-
-1. Clone this repository and enter the project folder
-```bash
-    git clone https://github.com/inkscopexyz/inkscope-fuzzer.git && cd inkscope-fuzzer
-```
-2. Build the project
-```bash
-    cargo build --release
-```
-
-3. Write the properties that you want to test and compile your contract with the `fuzz-testing` feature enabled.
-    - Refer to the [write-properties document](docs/write-properties.md) for more information.
-    
-4. Run the fuzzer
-```bash
-    ./target/release/inkscope-fuzzer "/path/to/file.contract"
+    docker run inkscope-fuzzer-testing
 ```
 
 
