@@ -454,15 +454,6 @@ impl Engine {
             .result
             .into()
     }
-    pub fn execute_last(&self,
-        sandbox: &mut DefaultSandbox,
-        trace: &Trace) -> MessageOrDeployResult{
-            match trace.last_message() {
-                Some(last_message) => self.execute_message(sandbox, last_message),
-                None => self.execute_deploy(sandbox, &trace.deploy)
-            }
-
-        }
     // Error if a property fail
     fn check_properties(
         &self,
@@ -542,12 +533,12 @@ impl Engine {
     pub fn run_campaign(&mut self) -> Result<CampaignResult> {
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
-        let seed = self.config.seed;
+        let rng_seed = self.config.seed;
 
         let start_time = std::time::Instant::now();
 
         let mut failed_traces: Vec<FailedTrace> = vec![];
-        let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
+        let mut fuzzer = Fuzzer::new(rng_seed, self.config.constants.clone());
 
         for _ in 0..max_iterations {
             let mut local_fuzzer = fuzzer.fork();
@@ -587,16 +578,15 @@ impl Engine {
     }
 
     
-    fn run_trace<'a>(&'a self, fuzzer: &mut Fuzzer, sandbox: &mut DefaultSandbox, local_snapshot_cache: &mut HashMap<u64, Snapshot>, current_snapshot: &mut Option<&'a Snapshot>, trace: &Trace) -> Result<Option<FailedTrace>>
+    fn execute_last<'a>(&'a self, fuzzer: &mut Fuzzer, sandbox: &mut DefaultSandbox, local_snapshot_cache: &mut HashMap<u64, Snapshot>, current_snapshot: &mut Option<&'a Snapshot>, trace: &Trace) -> Result<Option<FailedTrace>>
     {
-
         // CACHE: Check we happened to choose the same constructor as a previous run
         match self.snapshot_cache.get(&trace.hash()) {
             Some(snapshot) => {
                 debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
                 // The trace was already in the cache set current pending state
                 *current_snapshot = Some(snapshot);
-                return Ok(None);
+                Ok(None)
             }
             None => {
                 debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
@@ -604,11 +594,17 @@ impl Engine {
                 if let Some(snapshot) = current_snapshot {
                     debug!("The current state is not yet materialized in the sandbox, restoring current state.");
                     sandbox.restore_snapshot(snapshot.clone());
-                };
+                }; //Note: is current_snapshot is none then the sandbox must be up to date.
+                
                 *current_snapshot = None;
                
                 // Execute the action
-                match self.execute_last(sandbox, &trace) {
+                let message_or_deploy_result = match trace.last_message() {
+                    Some(last_message) => self.execute_message(sandbox, last_message),
+                    None => self.execute_deploy(sandbox, &trace.deploy)
+                };
+
+                match message_or_deploy_result {
                     MessageOrDeployResult::Unhandled(e) => {
                         // If the error is not a ContractTrapped, we panic because
                         // is not an expected behavior
@@ -663,7 +659,7 @@ impl Engine {
 
         // Start the trace with a deployment
         let mut trace = Trace::new(constructor);
-        if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
+        if let Some(failed_trace) = self.execute_last(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
             return Ok(Some(failed_trace));
         }
 
@@ -677,7 +673,7 @@ impl Engine {
             let message = self.generate_message(fuzzer, message_selector, &callee)?;
             trace.push(message);
 
-            if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
+            if let Some(failed_trace) = self.execute_last(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
                 return Ok(Some(failed_trace));
             }
         };
