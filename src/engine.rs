@@ -56,7 +56,7 @@ use std::{
         Hash as StdHash,
         Hasher,
     },
-    path::PathBuf, thread::LocalKey,
+    path::PathBuf,
 };
 
 pub struct CampaignResult {
@@ -534,24 +534,33 @@ impl Engine {
         Ok(failed_properties)
     }
 
+    pub fn optimize(result: FailedTrace) -> FailedTrace{
+
+        todo!()
+    }
+
     pub fn run_campaign(&mut self) -> Result<CampaignResult> {
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
+        let seed = self.config.seed;
 
         let start_time = std::time::Instant::now();
-        let mut failed_traces = vec![];
+
+        let mut failed_traces: Vec<FailedTrace> = vec![];
         let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
 
         for _ in 0..max_iterations {
-            let (x,y) = self.run(&mut fuzzer)?;
-            if let Some(failed_trace) = y {
+            let mut local_fuzzer = fuzzer.fork();
+            let mut local_snapshot_cache =  HashMap::<u64, Snapshot>::new();
+            let new_failed_traces= self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
+            if let Some(failed_trace) = new_failed_traces {
                 // Fail fast if a property fails
                 failed_traces.push(failed_trace);
                 if fail_fast {
                     break;
                 }
             }
-            self.snapshot_cache.extend(x);
+            self.snapshot_cache.extend(local_snapshot_cache);
 
         }
 
@@ -636,14 +645,14 @@ impl Engine {
         }
     }
 
-    fn run(&self, fuzzer: &mut Fuzzer) -> Result<(HashMap<u64, Snapshot>, Option<FailedTrace>)> {
+    fn run(&self, fuzzer: &mut Fuzzer, local_snapshot_cache: &mut HashMap::<u64, Snapshot>) -> Result<Option<FailedTrace>> {
         debug!("Starting run");
 
         //Local mutable state... 
         //Sandbox for the emulation
         let mut sandbox = DefaultSandbox::default();
-        let mut local_snapshot_cache =  HashMap::<u64, Snapshot>::new();
-        let mut current_snapshot=  self.init(&mut sandbox, &mut local_snapshot_cache)?;
+        //let mut local_snapshot_cache =  HashMap::<u64, Snapshot>::new();
+        let mut current_snapshot=  self.init(&mut sandbox, local_snapshot_cache)?;
        
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //  Deploy the main contract to be fuzzed using a random constructor with fuzzed
@@ -654,9 +663,10 @@ impl Engine {
 
         // Start the trace with a deployment
         let mut trace = Trace::new(constructor);
-        if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, &mut local_snapshot_cache, &mut current_snapshot, &trace)? {
-            return Ok((local_snapshot_cache, Some(failed_trace)));
+        if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
+            return Ok(Some(failed_trace));
         }
+
  
         let max_txs = self.config.max_number_of_transactions;
         let callee = trace.contract();
@@ -667,13 +677,11 @@ impl Engine {
             let message = self.generate_message(fuzzer, message_selector, &callee)?;
             trace.push(message);
 
-            if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, &mut local_snapshot_cache, &mut current_snapshot, &trace)? {
-                return Ok((local_snapshot_cache, Some(failed_trace)));
+            if let Some(failed_trace) = self.run_trace(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
+                return Ok(Some(failed_trace));
             }
-    
         };
-        
-        Ok((local_snapshot_cache, None))
+        Ok(None)
     }
 
 
