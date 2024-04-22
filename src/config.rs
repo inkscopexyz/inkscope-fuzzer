@@ -22,6 +22,9 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Config {
+    /// The initial random seed
+    pub seed: u64,
+
     // Exits as soon as a failed property is found
     pub fail_fast: bool,
 
@@ -75,6 +78,7 @@ impl Default for Config {
         // ];
 
         Self {
+            seed: 0,
             fail_fast: true,
             max_rounds: 1000,
             budget: 1000000000000,
