@@ -14,7 +14,7 @@ impl Fuzzer {
         }
     }
 
-    pub fn fork(&mut self) -> Self{
+    pub fn fork(&mut self) -> Self {
         let rng_seed = self.rng.u64(..);
         self.with_seed(rng_seed)
     }
