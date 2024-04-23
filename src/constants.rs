@@ -41,7 +41,24 @@ impl Default for Constants {
 }
 
 impl Constants {
-    fn extend(&mut self, other: &Self) {
+    pub fn new() -> Self {
+        Self {
+            u8_constants: HashSet::new(),
+            u16_constants: HashSet::new(),
+            u32_constants: HashSet::new(),
+            u64_constants: HashSet::new(),
+            u128_constants: HashSet::new(),
+            i8_constants: HashSet::new(),
+            i16_constants: HashSet::new(),
+            i32_constants: HashSet::new(),
+            i64_constants: HashSet::new(),
+            i128_constants: HashSet::new(),
+            str_constants: HashSet::new(),
+            account_id_constants: HashSet::new(),
+        }
+    }
+
+    pub fn extend(&mut self, other: &Self) {
         self.u8_constants.extend(&other.u8_constants);
         self.u16_constants.extend(&other.u16_constants);
         self.u32_constants.extend(&other.u32_constants);

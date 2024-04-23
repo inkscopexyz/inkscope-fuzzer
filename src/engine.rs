@@ -10,6 +10,7 @@ use crate::{
         Hashing,
         TraceHash,
     },
+    wasm_analyzer::extract_constants_from_wasm,
 };
 
 use anyhow::{
@@ -534,7 +535,16 @@ impl Engine {
 
         let start_time = std::time::Instant::now();
         let mut failed_traces = vec![];
-        let mut fuzzer = Fuzzer::new(0, self.config.constants.clone());
+        
+        let mut constants = self.config.constants.clone();
+
+        // Extract constants from the wasm
+        if self.config.extract_constants_from_wasm {
+            let new_constants = extract_constants_from_wasm(&self.contract.wasm).unwrap();
+            constants.extend(&new_constants);
+        }
+
+        let mut fuzzer = Fuzzer::new(0, constants);
 
         for _ in 0..max_iterations {
             if let Some(failed_trace) = self.run(&mut fuzzer)? {

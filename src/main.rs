@@ -5,6 +5,7 @@ mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
+mod wasm_analyzer;
 #[cfg(test)]
 mod tests;
 mod types;

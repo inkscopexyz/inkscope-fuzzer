@@ -54,6 +54,9 @@ pub struct Config {
     // arguments
     pub fuzz_property_max_rounds: usize,
 
+    // If true, extract constants from the wasm file
+    pub extract_constants_from_wasm: bool,
+
     // Initial set of constant values to use in the fuzzing
     pub constants: Constants,
 }
@@ -85,6 +88,7 @@ impl Default for Config {
             gas_limit: Weight::max_value(),
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,
+            extract_constants_from_wasm: true,
             constants: Constants::default(),
         }
     }

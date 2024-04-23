@@ -32,7 +32,8 @@ pub mod testing {
         let config = Config {
             fail_fast: true,
             max_rounds: 1000,
-            max_number_of_transactions: 50,
+            max_number_of_transactions: 100,
+            extract_constants_from_wasm: false,
             ..Default::default()
         };
         test_contract(

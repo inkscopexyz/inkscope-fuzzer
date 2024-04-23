@@ -12,6 +12,7 @@ gas_limit:
   proof_size: 4611686018427387903
 property_prefix: inkscope_
 fuzz_property_max_rounds: 100
+extract_constants_from_wasm_file: true
 constants:
   u8_constants:
   - 0
