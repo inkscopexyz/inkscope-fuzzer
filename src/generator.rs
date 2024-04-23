@@ -391,7 +391,7 @@ mod tests {
         let mut fuzzer = Fuzzer::new(
             0,
             Constants {
-                u8_constants: vec![0x41],
+                u8_constants: [0x41].into(),
                 ..Default::default()
             },
         );
@@ -436,7 +436,7 @@ mod tests {
         let mut fuzzer = Fuzzer::new(
             0,
             Constants {
-                u32_constants: vec![0x41],
+                u32_constants: [0x41].into(),
                 ..Default::default()
             },
         );
@@ -482,7 +482,7 @@ mod tests {
         let mut fuzzer = Fuzzer::new(
             0,
             Constants {
-                u32_constants: vec![0x41],
+                u32_constants: [0x41].into(),
                 ..Default::default()
             },
         );
@@ -534,8 +534,8 @@ mod tests {
         let mut fuzzer = Fuzzer::new(
             0,
             Constants {
-                u32_constants: vec![0x41],
-                u64_constants: vec![0x42],
+                u32_constants: [0x41].into(),
+                u64_constants: [0x42].into(),
                 ..Default::default()
             },
         );
@@ -578,7 +578,7 @@ mod tests {
         let mut fuzzer = Fuzzer::new(
             0,
             Constants {
-                u32_constants: vec![0x41],
+                u32_constants: [0x41].into(),
                 ..Default::default()
             },
         );
@@ -641,7 +641,7 @@ mod tests {
             let mut fuzzer = Fuzzer::new(
                 rng_seed,
                 Constants {
-                    u32_constants: vec![0x41],
+                    u32_constants: [0x41].into(),
                     ..Default::default()
                 },
             );

@@ -44,7 +44,7 @@ impl Fuzzer {
     }
 
     pub fn fuzz_str(&mut self) -> String {
-        match self.rng.choice(&self.constants.str_constants) {
+        match self.rng.choice(self.constants.str_constants.iter()) {
             Some(s) => s.to_string(),
             None => ["A"].repeat(self.rng.usize(1..100)).concat(),
         }
@@ -52,77 +52,77 @@ impl Fuzzer {
 
     // Generates a random u8
     pub fn fuzz_u8(&mut self) -> u8 {
-        match self.rng.choice(&mut self.constants.u8_constants) {
+        match self.rng.choice(&mut self.constants.u8_constants.iter()) {
             Some(c) => *c,
             None => self.rng.u8(..),
         }
     }
 
     pub fn fuzz_u16(&mut self) -> u16 {
-        match self.rng.choice(&mut self.constants.u16_constants) {
+        match self.rng.choice(&mut self.constants.u16_constants.iter()) {
             Some(c) => *c,
             None => self.rng.u16(..),
         }
     }
 
     pub fn fuzz_u32(&mut self) -> u32 {
-        match self.rng.choice(&mut self.constants.u32_constants) {
+        match self.rng.choice(&mut self.constants.u32_constants.iter()) {
             Some(c) => *c,
             None => self.rng.u32(..),
         }
     }
 
     pub fn fuzz_u64(&mut self) -> u64 {
-        match self.rng.choice(&mut self.constants.u64_constants) {
+        match self.rng.choice(&mut self.constants.u64_constants.iter()) {
             Some(c) => *c,
             None => self.rng.u64(..),
         }
     }
 
     pub fn fuzz_u128(&mut self) -> u128 {
-        match self.rng.choice(&mut self.constants.u128_constants) {
+        match self.rng.choice(&mut self.constants.u128_constants.iter()) {
             Some(c) => *c,
             None => self.rng.u128(..),
         }
     }
 
     pub fn fuzz_i8(&mut self) -> i8 {
-        match self.rng.choice(&mut self.constants.i8_constants) {
+        match self.rng.choice(&mut self.constants.i8_constants.iter()) {
             Some(c) => *c,
             None => self.rng.i8(..),
         }
     }
 
     pub fn fuzz_i16(&mut self) -> i16 {
-        match self.rng.choice(&mut self.constants.i16_constants) {
+        match self.rng.choice(&mut self.constants.i16_constants.iter()) {
             Some(c) => *c,
             None => self.rng.i16(..),
         }
     }
 
     pub fn fuzz_i32(&mut self) -> i32 {
-        match self.rng.choice(&mut self.constants.i32_constants) {
+        match self.rng.choice(&mut self.constants.i32_constants.iter()) {
             Some(c) => *c,
             None => self.rng.i32(..),
         }
     }
 
     pub fn fuzz_i64(&mut self) -> i64 {
-        match self.rng.choice(&mut self.constants.i64_constants) {
+        match self.rng.choice(&mut self.constants.i64_constants.iter()) {
             Some(c) => *c,
             None => self.rng.i64(..),
         }
     }
 
     pub fn fuzz_i128(&mut self) -> i128 {
-        match self.rng.choice(&mut self.constants.i128_constants) {
+        match self.rng.choice(&mut self.constants.i128_constants.iter()) {
             Some(c) => *c,
             None => self.rng.i128(..),
         }
     }
 
     pub fn fuzz_account_id(&mut self) -> [u8; 32] {
-        match self.rng.choice(&self.constants.account_id_constants) {
+        match self.rng.choice(self.constants.account_id_constants.iter()) {
             Some(c) => *c,
             None => {
                 let mut account_id = [0u8; 32];
@@ -160,10 +160,11 @@ mod tests {
 
     #[test]
     fn test_fuzz_str() {
-        let constants = Constants {
-            str_constants: vec!["A".to_string(), "B".to_string()],
+        let constants = Constants{
+            str_constants: ["A".to_string(), "B".to_string()].iter().cloned().collect(),
             ..Default::default()
         };
+
         let mut fuzzer = Fuzzer::new(0, constants);
         let mut strings = HashSet::new();
         for _ in 0..100 {
