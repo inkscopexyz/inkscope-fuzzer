@@ -13,9 +13,7 @@ use crate::{
 };
 
 use anyhow::{
-    anyhow,
-    Ok,
-    Result,
+    anyhow, bail, Ok, Result
 };
 use contract_transcode::Value;
 use ink_sandbox::{
@@ -156,37 +154,54 @@ pub struct Message {
     pub input: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Hash)]
+enum DeployOrMessage {
+    Deploy(Deploy),
+    Message(Message)    
+}
+impl DeployOrMessage {
+    pub fn data(&self) -> &Vec<u8>{
+        match self{
+            DeployOrMessage::Deploy(deploy) => &deploy.data,
+            DeployOrMessage::Message(message) => &message.input,
+        }
+    }    
+}
+
 #[derive(Debug, Clone)]
 pub struct Trace {
-    deploy: Deploy,
-    messages: Vec<Message>,
+    messages: Vec<DeployOrMessage>,
 }
 
 impl Trace {
-    pub fn new(deploy: Deploy) -> Self {
+    pub fn new() -> Self {
         Self {
-            deploy,
-            messages: vec![],
+            messages: vec![]
         }
     }
 
     // This function should be used to push a new Message to the trace
-    pub fn push(&mut self, message: Message) {
-        self.messages.push(message);
+    fn push(&mut self, deploy_or_message: DeployOrMessage) {
+        self.messages.push(deploy_or_message);
     }
 
-    pub fn hash(&self) -> TraceHash {
+    fn hash(&self) -> TraceHash {
         let mut hasher = DefaultHasher::new();
-        self.deploy.hash(&mut hasher);
         self.messages.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn contract(&self) -> AccountId {
-        self.deploy.address.clone()
+    pub fn contract(&self) -> Result<&AccountId> {
+        match self.messages.first() {
+            Some(deploy) => match deploy{
+                DeployOrMessage::Deploy(deploy) => Ok(&deploy.address),
+                DeployOrMessage::Message(_) => Err(anyhow!("First message in the trace is not a deployment"))
+            },
+            _ => Err(anyhow!("First message in the trace is not a deployment"))
+        }        
     }
 
-    pub fn last_message(&self) -> Option<&Message> {
+    fn last_message(&self) -> Option<&DeployOrMessage> {
         self.messages.last()
     }
 
@@ -454,6 +469,18 @@ impl Engine {
             .result
             .into()
     }
+
+    fn execute_deploy_or_message(
+        &self,
+        sandbox: &mut DefaultSandbox,
+        deploy_or_message: &DeployOrMessage,
+    ) -> MessageOrDeployResult {
+        match deploy_or_message {
+            DeployOrMessage::Deploy(deploy) => self.execute_deploy(sandbox, deploy),
+            DeployOrMessage::Message(message) => self.execute_message(sandbox, message)
+        }
+    }
+
     // Error if a property fail
     fn check_properties(
         &self,
@@ -462,7 +489,7 @@ impl Engine {
         trace: &Trace,
     ) -> Result<Vec<Message>> {
         let mut failed_properties = vec![];
-        let contract_address = trace.contract();
+        let contract_address = trace.contract()?;
 
         // Properties should not affect the state
         // We save a snapshot before the properties so we can restore it later.
@@ -525,8 +552,7 @@ impl Engine {
         Ok(failed_properties)
     }
 
-    pub fn optimize(result: FailedTrace) -> FailedTrace{
-
+    pub fn optimize(_result: FailedTrace) -> FailedTrace{
         todo!()
     }
 
@@ -600,8 +626,8 @@ impl Engine {
                
                 // Execute the action
                 let message_or_deploy_result = match trace.last_message() {
-                    Some(last_message) => self.execute_message(sandbox, last_message),
-                    None => self.execute_deploy(sandbox, &trace.deploy)
+                    Some(last_message) => self.execute_deploy_or_message(sandbox, last_message),
+                    None => bail!("Empty trace!"),
                 };
 
                 match message_or_deploy_result {
@@ -658,20 +684,22 @@ impl Engine {
             self.generate_constructor(fuzzer, constructor_selector, Default::default())?;
 
         // Start the trace with a deployment
-        let mut trace = Trace::new(constructor);
+        let mut trace = Trace::new();
+        trace.push(DeployOrMessage::Deploy(constructor));
         if let Some(failed_trace) = self.execute_last(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
             return Ok(Some(failed_trace));
         }
 
  
         let max_txs = self.config.max_number_of_transactions;
-        let callee = trace.contract();
+        let callee = trace.contract()?.clone();
         for i in 0..max_txs {
             debug!("Tx: {}/{}", i, max_txs);
 
             let message_selector = fuzzer.choice(&self.messages).unwrap();
             let message = self.generate_message(fuzzer, message_selector, &callee)?;
-            trace.push(message);
+
+            trace.push(DeployOrMessage::Message(message));
 
             if let Some(failed_trace) = self.execute_last(fuzzer, &mut sandbox, local_snapshot_cache, &mut current_snapshot, &trace)? {
                 return Ok(Some(failed_trace));
@@ -735,27 +763,19 @@ impl<'a> Output<'a> {
         for failed_trace in &campaign_result.failed_traces {
             println!("Property check failed ❌");
 
-            // Contract Deployment
-            match self.decode_deploy(&failed_trace.trace.deploy.data) {
-                Err(_e) => {
-                    println!("Raw deploy: {:?}", &failed_trace.trace.deploy.data);
-                }
-                Result::Ok(x) => {
-                    print!("  Deploy: ",);
-                    Self::print_value(&x);
-                    println!();
-                }
-            }
-
             // Messages
-            for (idx, message) in failed_trace.trace.messages.iter().enumerate() {
+            for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate() {
                 print!("  Message{}: ", idx);
-                match self.decode_message(&message.input) {
+                let decode_result = match deploy_or_message{
+                    DeployOrMessage::Deploy(deploy) => self.decode_deploy(&deploy.data),
+                    DeployOrMessage::Message(message) => self.decode_message(&message.input)
+                };
+                match decode_result {
                     Err(_e) => {
-                        println!("Raw message: {:?}", &message.input);
+                        println!("Raw message: {:?}", &deploy_or_message.data());
                     }
                     Result::Ok(x) => {
-                        print!("  Deploy: ",);
+                        print!("  Message: ",);
                         Self::print_value(&x);
                         println!();
                     }
@@ -793,8 +813,13 @@ mod tests {
         let salt = vec![8, 9, 10, 11];
 
         let deploy = Deploy::new(caller, endowment, contract_bytes, data, salt);
-        let mut trace1 = Trace::new(deploy.clone());
-        let mut trace2 = Trace::new(deploy);
+        let mut trace1 = Trace::new();
+        let mut trace2 = Trace::new();
+        assert_eq!(&trace1.hash(), &trace2.hash());
+
+        trace1.push(DeployOrMessage::Deploy(deploy.clone()));
+        trace2.push(DeployOrMessage::Deploy(deploy));
+        assert_eq!(&trace1.hash(), &trace2.hash());
 
         let message = Message {
             caller: AccountId::new([0; 32]),
@@ -809,8 +834,8 @@ mod tests {
             input: vec![0, 1, 2, 3],
         };
 
-        trace1.push(message);
-        trace2.push(message_identical);
+        trace1.push(DeployOrMessage::Message(message));
+        trace2.push(DeployOrMessage::Message(message_identical));
         assert_eq!(&trace1.hash(), &trace2.hash());
     }
 
