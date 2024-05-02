@@ -221,13 +221,12 @@ pub enum DeployOrMessageResult {
 pub enum TraceResult {
     Pass(Option<Vec<u8>>),
     Failed(FailReason),
+    Reverted
 }
 
 #[derive(Debug, Clone)]
 enum FailReason {
     Trapped,
-    Reverted,
-    //Unhandled(DispatchError),
     Properties(Vec<Message>),
 }
 
@@ -656,7 +655,8 @@ impl Engine {
             Some(cache_entry) => {
                 match &cache_entry.result {
                     TraceResult::Pass(_) => Ok(Some(&cache_entry.snapshot)),
-                    TraceResult::Failed(reason) => panic!("This should not happen. Falied Initialization should never be saved in the cache {:?}", reason),
+                    TraceResult::Failed(reason) => panic!("This should not happen. Failed Initialization should never be saved in the cache {:?}", reason),
+                    TraceResult::Reverted => panic!("This should not happen. Reverted Initialization should never be saved in the cache"),
                 }
             }
             _ => {
@@ -694,16 +694,12 @@ impl Engine {
                             None
                     },
                     TraceResult::Failed(reason) => 
-                        match reason{
-                            FailReason::Reverted => {
-                                // If the message reverts we just ignore this execution and
-                                // continue
-                                None
-                            },
-                            FailReason::Trapped |
-                            FailReason::Properties(_) => Some(FailedTrace::new(trace.clone(), reason.clone())),
-                        }
-                    
+                        Some(FailedTrace::new(trace.clone(), reason.clone())),
+                    TraceResult::Reverted => {
+                        // If the message reverts we just ignore this execution and
+                        // continue
+                        None
+                    }
                 }
             },
             None => {
@@ -736,7 +732,7 @@ impl Engine {
                     },
                     DeployOrMessageResult::Reverted => {
                         // Note: the snapshot here is probably never used as the last tx reverted
-                        local_snapshot_cache.insert(trace.hash(), TraceState::new(sandbox.take_snapshot(), TraceResult::Failed(FailReason::Reverted)));
+                        local_snapshot_cache.insert(trace.hash(), TraceState::new(sandbox.take_snapshot(), TraceResult::Reverted));
                         // If the message reverts we just ignore this execution and
                         None
                     }
@@ -903,7 +899,6 @@ impl<'a> Output<'a> {
 
             match &failed_trace.reason{
                 FailReason::Trapped => println!("Last message in trace has Trapped"),
-                FailReason::Reverted => println!("Last message in trace has Reverted"),
                 FailReason::Properties(failed_properties) => {
                     // Failed properties
                     for message in failed_properties.iter() {
