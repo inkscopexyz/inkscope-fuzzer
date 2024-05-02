@@ -24,7 +24,10 @@ use ink_sandbox::{
         balance_api::BalanceAPI,
         contracts_api::ContractAPI,
     },
-    frame_support::{print, sp_runtime::traits::Hash},
+    frame_support::{
+        print,
+        sp_runtime::traits::Hash,
+    },
     macros::DefaultSandboxRuntime,
     pallet_contracts::{
         AddressGenerator,
@@ -72,9 +75,8 @@ pub struct FailedTrace {
 }
 impl FailedTrace {
     pub fn new(trace: Trace, reason: FailReason) -> Self {
-        Self {trace, reason}
+        Self { trace, reason }
     }
-    
 }
 
 // Our own copy of method information. The selector is used as the key in the hashmap
@@ -216,20 +218,18 @@ pub enum DeployOrMessageResult {
     Unhandled(DispatchError),
 }
 
-
 #[derive(Debug)]
 pub enum TraceResult {
     Pass(Option<Vec<u8>>),
     Failed(FailReason),
-    Reverted
+    Reverted,
 }
 
 #[derive(Debug, Clone)]
-enum FailReason {
+pub enum FailReason {
     Trapped,
-    Properties(Vec<Message>),
+    Property(Message),
 }
-
 
 impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
     fn from(val: Result<ExecReturnValue, DispatchError>) -> Self {
@@ -290,11 +290,11 @@ struct TraceState {
     snapshot: Snapshot,
 
     // The trace result
-    result: TraceResult
+    result: TraceResult,
 }
-impl TraceState{
-    pub fn new(snapshot: Snapshot, result: TraceResult) -> Self{
-        Self {snapshot, result}
+impl TraceState {
+    pub fn new(snapshot: Snapshot, result: TraceResult) -> Self {
+        Self { snapshot, result }
     }
 }
 
@@ -599,17 +599,16 @@ impl Engine {
         let remove_idx = fuzzer.rng.usize(1..result.trace.messages.len());
         let mut sandbox = DefaultSandbox::default();
 
-        for (pos, deploy_or_message) in result.trace.messages.iter().enumerate(){
-            if pos != remove_idx{
-                //new_trace.push(deploy_or_message.clone());
-                // let result = self.execute_deploy_or_message_and_check_properties(sandbox, deploy_or_message);
-                // match result {
+        for (pos, deploy_or_message) in result.trace.messages.iter().enumerate() {
+            if pos != remove_idx {
+                // new_trace.push(deploy_or_message.clone());
+                // let result =
+                // self.execute_deploy_or_message_and_check_properties(sandbox,
+                // deploy_or_message); match result {
 
-                    
                 // }
                 todo!()
             }
-
         }
         todo!()
     }
@@ -629,12 +628,12 @@ impl Engine {
             let mut local_snapshot_cache = SnapshotCache::new();
             let new_failed_traces =
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
-            if let Some(failed_trace) = new_failed_traces {
-                // Fail fast if a property fails
-                failed_traces.push(failed_trace);
-                if fail_fast {
-                    break;
-                }
+
+            failed_traces.extend(new_failed_traces);
+
+            // If we have failed traces and fail_fast is enabled, we stop the campaign
+            if !failed_traces.is_empty() && fail_fast {
+                break;
             }
             self.snapshot_cache.extend(local_snapshot_cache);
         }
@@ -677,31 +676,28 @@ impl Engine {
         local_snapshot_cache: &mut SnapshotCache,
         current_snapshot: &mut Option<&'a Snapshot>,
         trace: &Trace,
-    ) -> Result<Option<FailedTrace>> {
-
-        // let real_rerace = trace.messages[..-1];
-        // let last_message = trace.messages.last()?;
-        // let trace_hash = hash( (real_trace, last_message) ); 
+    ) -> Result<Vec<FailedTrace>> {
+        let mut failed_traces = vec![];
 
         // CACHE: Check we happened to choose the same constructor as a previous run
-        let res = match self.snapshot_cache.get(&trace.hash()) {
+        match self.snapshot_cache.get(&trace.hash()) {
             Some(cache_entry) => {
-                match &cache_entry.result{
+                match &cache_entry.result {
                     TraceResult::Pass(_output) => {
-                            debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
-                            // The trace was already in the cache set current pending state                        
-                            *current_snapshot = Some(&cache_entry.snapshot);
-                            None
-                    },
-                    TraceResult::Failed(reason) => 
-                        Some(FailedTrace::new(trace.clone(), reason.clone())),
+                        debug!("Cahe HIT: Same constructor was choosen and executed before, reloading state from cache");
+                        // The trace was already in the cache set current pending state
+                        *current_snapshot = Some(&cache_entry.snapshot);
+                    }
+                    TraceResult::Failed(reason) => {
+                        failed_traces
+                            .push(FailedTrace::new(trace.clone(), reason.clone()))
+                    }
                     TraceResult::Reverted => {
                         // If the message reverts we just ignore this execution and
                         // continue
-                        None
                     }
                 }
-            },
+            }
             None => {
                 debug!("Cahe MISS: The choosen constructor was never executed before. Executing it.");
                 // The trace was not in the cache, apply the previous state if any
@@ -727,50 +723,77 @@ impl Engine {
                         panic!("Error: {:?}", e);
                     }
                     DeployOrMessageResult::Trapped => {
-                        local_snapshot_cache.insert(trace.hash(), TraceState::new(sandbox.take_snapshot(), TraceResult::Failed(FailReason::Trapped)));
-                        Some(FailedTrace::new(trace.clone(), FailReason::Trapped))
-                    },
+                        local_snapshot_cache.insert(
+                            trace.hash(),
+                            TraceState::new(
+                                sandbox.take_snapshot(),
+                                TraceResult::Failed(FailReason::Trapped),
+                            ),
+                        );
+                        failed_traces.push(FailedTrace {
+                            trace: trace.clone(),
+                            reason: FailReason::Trapped,
+                        });
+                    }
                     DeployOrMessageResult::Reverted => {
-                        // Note: the snapshot here is probably never used as the last tx reverted
-                        local_snapshot_cache.insert(trace.hash(), TraceState::new(sandbox.take_snapshot(), TraceResult::Reverted));
+                        // Note: the snapshot here is probably never used as the last tx
+                        // reverted
+                        local_snapshot_cache.insert(
+                            trace.hash(),
+                            TraceState::new(
+                                sandbox.take_snapshot(),
+                                TraceResult::Reverted,
+                            ),
+                        );
                         // If the message reverts we just ignore this execution and
-                        None
                     }
                     DeployOrMessageResult::Success(output) => {
                         // If it did not revert or panic we check the properties
                         let failed_properties =
                             self.check_properties(fuzzer, sandbox, &trace)?;
                         if !failed_properties.is_empty() {
-                            local_snapshot_cache.insert(
-                                trace.hash(),
-                                TraceState::new(sandbox.take_snapshot(), TraceResult::Failed(FailReason::Properties(failed_properties.clone()))),
-                            );
+                            for failed_property in &failed_properties {
+                                debug!("Property check failed: {:?}", failed_property);
+                                local_snapshot_cache.insert(
+                                    trace.hash(),
+                                    TraceState::new(
+                                        sandbox.take_snapshot(),
+                                        TraceResult::Failed(FailReason::Property(
+                                            failed_property.clone(),
+                                        )),
+                                    ),
+                                );
 
-                            Some(FailedTrace {
-                                trace: trace.clone(),
-                                reason: FailReason::Properties(failed_properties.clone()),
-                            })
+                                failed_traces.push(FailedTrace {
+                                    trace: trace.clone(),
+                                    reason: FailReason::Property(
+                                        failed_property.to_owned(),
+                                    ),
+                                });
+                            }
                         } else {
                             // If the execution went ok then store the new state in the
                             // cache
                             local_snapshot_cache.insert(
                                 trace.hash(),
-                                TraceState::new(sandbox.take_snapshot(), TraceResult::Pass(Some(output))),
+                                TraceState::new(
+                                    sandbox.take_snapshot(),
+                                    TraceResult::Pass(Some(output)),
+                                ),
                             );
-                            None
                         }
                     }
                 }
             }
         };
-        Ok(res)
+        Ok(failed_traces)
     }
 
     fn run(
         &self,
         fuzzer: &mut Fuzzer,
         local_snapshot_cache: &mut SnapshotCache,
-    ) -> Result<Option<FailedTrace>> {
+    ) -> Result<Vec<FailedTrace>> {
         debug!("Starting run");
 
         // Local mutable state...
@@ -788,14 +811,18 @@ impl Engine {
         // Start the trace with a deployment
         let mut trace = Trace::new();
         trace.push(DeployOrMessage::Deploy(constructor));
-        if let Some(failed_trace) = self.execute_last(
+
+        let mut failed_traces = self.execute_last(
             fuzzer,
             &mut sandbox,
             local_snapshot_cache,
             &mut current_snapshot,
             &trace,
-        )? {
-            return Ok(Some(failed_trace));
+        )?;
+
+        // If the deployment failed, we return the failed trace. We do not continue
+        if !failed_traces.is_empty() {
+            return Ok(failed_traces);
         }
 
         let max_txs = self.config.max_number_of_transactions;
@@ -808,17 +835,15 @@ impl Engine {
 
             trace.push(DeployOrMessage::Message(message));
 
-            if let Some(failed_trace) = self.execute_last(
+            failed_traces.extend(self.execute_last(
                 fuzzer,
                 &mut sandbox,
                 local_snapshot_cache,
                 &mut current_snapshot,
                 &trace,
-            )? {
-                return Ok(Some(failed_trace));
-            }
+            )?);
         }
-        Ok(None)
+        Ok(failed_traces)
     }
 
     pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
@@ -897,23 +922,22 @@ impl<'a> Output<'a> {
                 }
             }
 
-            match &failed_trace.reason{
+            match &failed_trace.reason {
                 FailReason::Trapped => println!("Last message in trace has Trapped"),
-                FailReason::Properties(failed_properties) => {
+                FailReason::Property(failed_property) => {
                     // Failed properties
-                    for message in failed_properties.iter() {
-                        match self.decode_message(&message.input) {
-                            Err(_e) => {
-                                println!("Raw message: {:?}", &message.input);
-                            }
-                            Result::Ok(x) => {
-                                print!("  Property: ",);
-                                Self::print_value(&x);
-                                println!();
-                            }
+
+                    match self.decode_message(&failed_property.input) {
+                        Err(_e) => {
+                            println!("Raw message: {:?}", &failed_property.input);
+                        }
+                        Result::Ok(x) => {
+                            print!("  Property: ",);
+                            Self::print_value(&x);
+                            println!();
                         }
                     }
-                },
+                }
             };
         }
     }
