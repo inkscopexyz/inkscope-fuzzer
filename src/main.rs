@@ -5,9 +5,12 @@ mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
+mod tui;
 #[cfg(test)]
 mod tests;
 mod types;
+
+use std::sync::{Arc, RwLock};
 
 use crate::config::Config;
 use anyhow::{
@@ -19,9 +22,11 @@ use clap::{
     Parser,
 };
 use cli::Cli;
-use engine::Engine;
+use engine::{CampaignData, Engine};
 
 fn main() -> Result<()> {
+    // Initialize the terminal UI
+    let mut terminal = tui::init()?;
     // This initializes the logging. The code uses debug! info! trace! and error! macros
     // You can enable the output via the environment variable RUST_LOG
     env_logger::init();
@@ -37,9 +42,22 @@ fn main() -> Result<()> {
     };
     let contract_path = cli.contract;
 
+    let campaign_data = Arc::new(RwLock::new(CampaignData::new()));
+    let mut app = tui::App {
+        campaign_data: Arc::clone(&campaign_data),
+        exit: false,
+    };
+    // Run the tui in a new thread
+    std::thread::spawn(move || {
+        app.run(&mut terminal).unwrap();
+    });
+
     let mut engine = Engine::new(contract_path, config)?;
-    let campaign_result = engine.run_campaign()?;
+    let campaign_result = engine.run_campaign(&mut Some(Arc::clone(&campaign_data)))?;
     engine.print_campaign_result(&campaign_result);
+    
+    // Restore the terminal to its original state
+    tui::restore()?;
 
     Ok(())
 }

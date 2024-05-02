@@ -60,8 +60,25 @@ use std::{
         Hash as StdHash,
         Hasher,
     },
-    path::PathBuf,
+    path::PathBuf, sync::{Arc, RwLock},
 };
+
+pub struct CampaignData {
+    pub properties: Vec<String>,
+    pub seed: u64,
+    pub failed_traces: Vec<FailedTrace>,
+    pub exit: bool,
+}
+impl CampaignData {
+    pub fn new() -> Self {
+        Self {
+            properties: vec![],
+            seed: 0,
+            failed_traces: vec![],
+            exit: false,
+        }
+    }
+}
 
 pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
@@ -613,7 +630,15 @@ impl Engine {
         todo!()
     }
 
-    pub fn run_campaign(&mut self) -> Result<CampaignResult> {
+    pub fn run_campaign(&mut self, campaign_data: &mut Option<Arc<RwLock<CampaignData>>>) -> Result<CampaignResult> {
+        if let Some(campaign_data) = campaign_data {
+            campaign_data.write().unwrap().seed = self.config.seed;
+            campaign_data.write().unwrap().properties = self
+                .properties
+                .iter()
+                .map(|selector| format!("{:?}", selector))
+                .collect();
+        }
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
         let rng_seed = self.config.seed;
