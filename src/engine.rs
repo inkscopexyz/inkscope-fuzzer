@@ -63,20 +63,21 @@ use std::{
     path::PathBuf, sync::{Arc, RwLock},
 };
 
+#[derive(Debug, Clone)]
 pub struct CampaignData {
     pub properties: Vec<String>,
     pub seed: u64,
     pub failed_traces: Vec<FailedTrace>,
-    pub exit: bool,
+    pub in_progress: bool
 }
-impl CampaignData {
-    pub fn new() -> Self {
-        Self {
-            properties: vec![],
-            seed: 0,
-            failed_traces: vec![],
-            exit: false,
-        }
+impl Default for CampaignData {
+    fn default() -> Self {
+       Self{
+              properties: vec![],
+              seed: 0,
+              failed_traces: vec![],
+                in_progress: true
+       }
     }
 }
 
@@ -84,6 +85,7 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
+#[derive(Debug, Clone)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
@@ -630,15 +632,15 @@ impl Engine {
         todo!()
     }
 
-    pub fn run_campaign(&mut self, campaign_data: &mut Option<Arc<RwLock<CampaignData>>>) -> Result<CampaignResult> {
-        if let Some(campaign_data) = campaign_data {
-            campaign_data.write().unwrap().seed = self.config.seed;
-            campaign_data.write().unwrap().properties = self
-                .properties
-                .iter()
-                .map(|selector| format!("{:?}", selector))
-                .collect();
-        }
+    pub fn run_campaign(&mut self, campaign_data: &mut Arc<RwLock<CampaignData>>) -> Result<CampaignResult> {
+        // Set the seed and properties in the campaign data
+        campaign_data.write().unwrap().seed = self.config.seed;
+        campaign_data.write().unwrap().properties = self
+            .properties
+            .iter()
+            .map(|selector| format!("{:?}", selector))
+            .collect();
+        
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
         let rng_seed = self.config.seed;

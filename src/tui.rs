@@ -1,4 +1,4 @@
-use std::{io::{self, stdout, Stdout}, sync::{Arc, RwLock}};
+use std::{io::{self, stdout, Stdout}, sync::{Arc, RwLock}, thread, time::Duration};
 
 use crossterm::{execute, terminal::*};
 use ratatui::{prelude::*, widgets::{block::Title, Block}};
@@ -31,14 +31,25 @@ pub fn restore() -> io::Result<()> {
 
 pub struct App {
     pub campaign_data: Arc<RwLock<CampaignData>>,
+    pub local_campaign_data: CampaignData,
     pub exit: bool,
 }
 impl App {
+    pub fn new(campaign_data: Arc<RwLock<CampaignData>>) -> Self {
+        let local_campaign_data = campaign_data.read().unwrap().clone();
+        Self {
+            campaign_data,
+            local_campaign_data,
+            exit: false,
+        }
+    }
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
-        while !self.exit {
+        while !self.exit && self.local_campaign_data.in_progress{
+            self.local_campaign_data = self.campaign_data.read().unwrap().clone();
             terminal.draw(|frame| self.render_frame(frame))?;
             //self.handle_events()?;
+            thread::sleep(Duration::from_millis(100));
         }
         Ok(())
     }
@@ -55,10 +66,6 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = Title::from(" Inkscope Fuzzer ".bold());
         let instructions = Title::from(Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]));
@@ -75,13 +82,13 @@ impl Widget for &App {
         let mut lines = vec![];
         let seed_line = Line::from(vec![
             "Seed: ".into(),
-            self.campaign_data.read().unwrap().seed.to_string().yellow(),
+            self.local_campaign_data.seed.to_string().yellow(),
         ]);
         lines.push(seed_line);
 
         let n_properties_line = Line::from(vec![
             "Properties N : ".into(),
-            self.campaign_data.read().unwrap().properties.len().to_string().yellow(),
+            self.local_campaign_data.properties.len().to_string().yellow(),
         ]);
         lines.push(n_properties_line);
 
