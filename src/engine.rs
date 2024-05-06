@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     contract_bundle::ContractBundle,
-    fuzzer::Fuzzer,
+    fuzzer::{self, Fuzzer},
     generator::Generator,
     types::{
         AccountId,
@@ -76,6 +76,14 @@ pub struct FailedTrace {
 impl FailedTrace {
     pub fn new(trace: Trace, reason: FailReason) -> Self {
         Self { trace, reason }
+    }
+
+    /// Return the calldata that made the trace fail (Could be from a message that trapped or a property that failed)
+    pub fn failed_data(&self) -> &Vec<u8>{
+        match self.reason{
+            FailReason::Trapped => self.trace.last_message().unwrap().data(),
+            FailReason::Property(failed_property_message) => failed_property_message.data(),
+        }
     }
 }
 
@@ -162,6 +170,9 @@ enum DeployOrMessage {
     Message(Message),
 }
 impl DeployOrMessage {
+    pub fn method_id(&self) -> [u8; 4]{
+        self.data()[0..4].try_into().unwrap()
+    }
     pub fn data(&self) -> &Vec<u8> {
         match self {
             DeployOrMessage::Deploy(deploy) => &deploy.data,
@@ -191,6 +202,18 @@ impl Trace {
         hasher.finish()
     }
 
+     
+    fn hash_extra(&self, extra: Option<&DeployOrMessage>) -> TraceHash {
+            let mut hasher = DefaultHasher::new();
+        for m in &self.messages{
+            m.hash(&mut hasher);
+        }
+        if let Some(m) = extra {
+            m.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
     pub fn contract(&self) -> Result<&AccountId> {
         match self.messages.first() {
             Some(deploy) => {
@@ -215,19 +238,26 @@ pub enum DeployOrMessageResult {
     Trapped,
     Reverted,
     Success(Vec<u8>),
-    Unhandled(DispatchError),
 }
 
 #[derive(Debug)]
 pub enum TraceResult {
+    /// The trace was succesful. The last message potentially retrurn an output
     Pass(Option<Vec<u8>>),
+
+    /// The trace Failed. See FailReason for the reason
     Failed(FailReason),
+
+    /// The last message of the trace has reverted
     Reverted,
 }
 
 #[derive(Debug, Clone)]
 pub enum FailReason {
+    /// Last message (or deploy) in the trace trapped
     Trapped,
+
+    /// Message property does not hold in the trace
     Property(Message),
 }
 
@@ -242,7 +272,11 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
                     {
                         DeployOrMessageResult::Trapped
                     }
-                    _ => DeployOrMessageResult::Unhandled(e),
+                    _ => {
+                        // If the error is not a ContractTrapped, we panic because
+                        // is not an expected behavior
+                        panic!("Unhandled dispatch error Error: {:?}", e);
+                    }
                 }
             }
             // Return if execution reverted in constructor
@@ -569,11 +603,6 @@ impl Engine {
                 sandbox.restore_snapshot(checkpoint.clone());
 
                 match result {
-                    DeployOrMessageResult::Unhandled(e) => {
-                        // If the error is not a ContractTrapped, we panic because
-                        // is not an expected behavior
-                        panic!("Error: {:?}", e);
-                    }
                     DeployOrMessageResult::Trapped | DeployOrMessageResult::Reverted => {
                         // If the property reverts or panics, we also consider it failed
                         failed_properties.push(property_message);
@@ -594,14 +623,44 @@ impl Engine {
         Ok(failed_properties)
     }
 
-    pub fn optimize(&self, fuzzer: &mut Fuzzer, result: FailedTrace) -> FailedTrace {
-        let new_trace = Trace::new();
-        let remove_idx = fuzzer.rng.usize(1..result.trace.messages.len());
-        let mut sandbox = DefaultSandbox::default();
+    pub fn optimize(&self, fuzzer: &mut Fuzzer, failed_trace: FailedTrace) -> Result<FailedTrace> {
+        let remove_idx = fuzzer.rng.usize(1..failed_trace.trace.messages.len());
 
-        for (pos, deploy_or_message) in result.trace.messages.iter().enumerate() {
+        let mut local_snapshot_cache = SnapshotCache::new();
+        let mut sandbox = DefaultSandbox::default();
+        let mut current_snapshot = self.init(&mut sandbox, local_snapshot_cache)?;
+
+        let mut new_trace = Trace::new();
+        for (pos, deploy_or_message) in failed_trace.trace.messages.iter().enumerate() {
             if pos != remove_idx {
-                // new_trace.push(deploy_or_message.clone());
+                new_trace.messages.push(deploy_or_message.clone());
+                let result = self.execute_last(fuzzer, &mut sandbox, &mut local_snapshot_cache, &mut current_snapshot, new_trace)?;
+                for trace in result{
+                    let failing_method_calldata = match trace.reason{
+                        FailReason::Trapped => trace.trace.last_message().unwrap().data(),
+                        FailReason::Property(failed_property_message) => &failed_property_message.input,
+                    };
+
+                    let mut n = 0;
+                    while true{
+                        if  n > failing_method_calldata.len() || n > failed_trace.failed_data().len() ||
+                            failing_method_calldata[n] != failed_trace.failed_data()[n]{
+                                break;
+                            };
+                        if n >= 4 {
+                            return Ok(trace);
+                        }
+                        n += 1;
+                    }
+                    return false;
+
+
+                    // Check if we reached the same failed property or trapped message;
+                    if trace.reason == failed_trace.reason{
+                        return new_trace
+                    }
+
+                }
                 // let result =
                 // self.execute_deploy_or_message_and_check_properties(sandbox,
                 // deploy_or_message); match result {
@@ -717,11 +776,6 @@ impl Engine {
                 };
 
                 match message_or_deploy_result {
-                    DeployOrMessageResult::Unhandled(e) => {
-                        // If the error is not a ContractTrapped, we panic because
-                        // is not an expected behavior
-                        panic!("Error: {:?}", e);
-                    }
                     DeployOrMessageResult::Trapped => {
                         local_snapshot_cache.insert(
                             trace.hash(),
