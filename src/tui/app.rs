@@ -8,7 +8,10 @@ use ratatui::{
     widgets::{block::*, *},
 };
 
-use crate::engine::{CampaignData, CampaignStatus};
+use crate::engine::CampaignData;
+
+use crossterm::{execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
@@ -29,6 +32,7 @@ impl App {
     }
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
+        self.init_terminal()?;
         while !self.exit {
             self.local_campaign_data = self.campaign_data.read().unwrap().clone();
             terminal.draw(|frame| self.render_frame(frame))?;
@@ -55,14 +59,29 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char('q') => self.exit(),
+            // TODO: Add more key bindings here if needed. Handle unwrap
+            KeyCode::Char('q') => self.exit().unwrap(),
             _ => {}
         }
     }
 
-    fn exit(&mut self) {
+    fn exit(&mut self) -> io::Result<()> {
         self.exit = true;
-        //self.campaign_data.write().unwrap().in_progress = false;
+        self.restore_terminal()?;
+        Ok(())
+    }
+
+    fn init_terminal(&self) -> io::Result<Tui> {
+        execute!(stdout(), EnterAlternateScreen)?;
+        enable_raw_mode()?;
+        Terminal::new(CrosstermBackend::new(stdout()))
+    }
+    
+    /// Restore the terminal to its original state
+    fn restore_terminal(&self) -> io::Result<()> {
+        execute!(stdout(), LeaveAlternateScreen)?;
+        disable_raw_mode()?;
+        Ok(())
     }
 }
 impl Widget for &App {
