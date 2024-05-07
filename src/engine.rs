@@ -64,11 +64,18 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
+pub enum CampaignStatus{
+    Initializing,
+    InProgress,
+    Finished,
+}
+
+#[derive(Debug, Clone)]
 pub struct CampaignData {
     pub properties: Vec<String>,
     pub seed: u64,
     pub failed_traces: Vec<FailedTrace>,
-    pub in_progress: bool
+    pub status: CampaignStatus
 }
 impl Default for CampaignData {
     fn default() -> Self {
@@ -76,7 +83,7 @@ impl Default for CampaignData {
               properties: vec![],
               seed: 0,
               failed_traces: vec![],
-                in_progress: true
+             status: CampaignStatus::Initializing
        }
     }
 }
@@ -100,6 +107,7 @@ impl FailedTrace {
 
 // Our own copy of method information. The selector is used as the key in the hashmap
 struct MethodInfo {
+    method_name: String,
     arguments: Vec<TypeDef<PortableForm>>,
     #[allow(dead_code)]
     mutates: bool,
@@ -110,12 +118,14 @@ struct MethodInfo {
 
 impl MethodInfo {
     fn new(
+        method_name: String,
         arguments: Vec<TypeDef<PortableForm>>,
         mutates: bool,
         payable: bool,
         constructor: bool,
     ) -> Self {
         Self {
+            method_name,
             arguments,
             mutates,
             payable,
@@ -354,7 +364,7 @@ impl Engine {
                     .type_def;
                 arguments.push(arg.clone());
             }
-            let method_info = MethodInfo::new(arguments, true, spec.payable, true);
+            let method_info = MethodInfo::new(spec.label().to_string(), arguments, true, spec.payable, true);
             self.method_info.insert(selector, method_info);
             self.constructors.insert(selector);
         }
@@ -373,7 +383,7 @@ impl Engine {
                 arguments.push(arg.clone());
             }
             let method_info =
-                MethodInfo::new(arguments, spec.mutates(), spec.payable(), false);
+                MethodInfo::new(spec.label().to_string(), arguments, spec.mutates(), spec.payable(), false);
             self.method_info.insert(selector, method_info);
             if self.is_property(spec.label()) {
                 self.properties.insert(selector);
@@ -636,9 +646,10 @@ impl Engine {
         // Set the seed and properties in the campaign data
         campaign_data.write().unwrap().seed = self.config.seed;
         campaign_data.write().unwrap().properties = self
-            .properties
+            .method_info
             .iter()
-            .map(|selector| format!("{:?}", selector))
+            .filter(|(selector, _)| self.properties.contains(selector.clone()))
+            .map(|(_selector, method_info)| method_info.method_name.clone())
             .collect();
         
         let max_iterations = self.config.max_rounds;
@@ -657,6 +668,10 @@ impl Engine {
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
 
             failed_traces.extend(new_failed_traces);
+
+            // TODO: Only update the campaign data if new failed traces are found.
+            // TODO: Maybe send a message to worker thread to make checks and perform updates
+            campaign_data.write().unwrap().failed_traces = failed_traces.clone();
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
             if !failed_traces.is_empty() && fail_fast {
@@ -1014,7 +1029,7 @@ mod tests {
     #[test]
     fn test_method_info() {
         let arguments = vec![];
-        let method_info = MethodInfo::new(arguments, true, true, false);
+        let method_info = MethodInfo::new(String::from("Name"), arguments, true, true, false);
         assert!(method_info.mutates);
         assert!(method_info.payable);
         assert!(!method_info.constructor);

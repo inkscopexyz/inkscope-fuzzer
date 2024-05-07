@@ -1,33 +1,17 @@
 use std::{io::{self, stdout, Stdout}, sync::{Arc, RwLock}, thread, time::Duration};
 
-use crossterm::{execute, terminal::*};
 use ratatui::{prelude::*, widgets::{block::Title, Block}};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
-    prelude::*,
     symbols::border,
     widgets::{block::*, *},
 };
 
-use crate::engine::CampaignData;
+use crate::engine::{CampaignData, CampaignStatus};
 
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
-
-/// Initialize the terminal
-pub fn init() -> io::Result<Tui> {
-    execute!(stdout(), EnterAlternateScreen)?;
-    enable_raw_mode()?;
-    Terminal::new(CrosstermBackend::new(stdout()))
-}
-
-/// Restore the terminal to its original state
-pub fn restore() -> io::Result<()> {
-    execute!(stdout(), LeaveAlternateScreen)?;
-    disable_raw_mode()?;
-    Ok(())
-}
 
 pub struct App {
     pub campaign_data: Arc<RwLock<CampaignData>>,
@@ -45,10 +29,10 @@ impl App {
     }
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
-        while !self.exit && self.local_campaign_data.in_progress{
+        while !self.exit {
             self.local_campaign_data = self.campaign_data.read().unwrap().clone();
             terminal.draw(|frame| self.render_frame(frame))?;
-            //self.handle_events()?;
+            self.handle_events()?;
             thread::sleep(Duration::from_millis(100));
         }
         Ok(())
@@ -58,8 +42,27 @@ impl App {
         frame.render_widget(self, frame.size());
     }
 
+    /// updates the application's state based on user input
     fn handle_events(&mut self) -> io::Result<()> {
-        todo!()
+        match event::read()? {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                self.handle_key_event(key_event)
+            }
+            _ => {}
+        };
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('q') => self.exit(),
+            _ => {}
+        }
+    }
+
+    fn exit(&mut self) {
+        self.exit = true;
+        //self.campaign_data.write().unwrap().in_progress = false;
     }
 }
 impl Widget for &App {
@@ -87,7 +90,7 @@ impl Widget for &App {
         lines.push(seed_line);
 
         let n_properties_line = Line::from(vec![
-            "Properties N : ".into(),
+            "Properties found: ".into(),
             self.local_campaign_data.properties.len().to_string().yellow(),
         ]);
         lines.push(n_properties_line);
