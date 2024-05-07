@@ -651,6 +651,7 @@ impl Engine {
             .filter(|(selector, _)| self.properties.contains(selector.clone()))
             .map(|(_selector, method_info)| method_info.method_name.clone())
             .collect();
+        campaign_data.write().unwrap().status = CampaignStatus::InProgress;
         
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
