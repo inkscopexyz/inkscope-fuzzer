@@ -1,11 +1,20 @@
 use crate::{
-    config::Config, contract_bundle::ContractBundle, fuzzer::Fuzzer, generator::Generator, info::{ConsoleOutput, OutputTrait, TuiOutput}, types::{
+    config::Config,
+    contract_bundle::ContractBundle,
+    fuzzer::Fuzzer,
+    generator::Generator,
+    info::{
+        ConsoleOutput,
+        OutputTrait,
+        TuiOutput,
+    },
+    types::{
         AccountId,
         Balance,
         CodeHash,
         Hashing,
         TraceHash,
-    }
+    },
 };
 
 use anyhow::{
@@ -56,11 +65,15 @@ use std::{
         Hash as StdHash,
         Hasher,
     },
-    path::PathBuf, sync::{Arc, RwLock},
+    path::PathBuf,
+    sync::{
+        Arc,
+        RwLock,
+    },
 };
 
 #[derive(Debug, Clone)]
-pub enum CampaignStatus{
+pub enum CampaignStatus {
     Initializing,
     InProgress,
     Finished,
@@ -71,16 +84,16 @@ pub struct CampaignData {
     pub properties: Vec<String>,
     pub seed: u64,
     pub failed_traces: Vec<FailedTrace>,
-    pub status: CampaignStatus
+    pub status: CampaignStatus,
 }
 impl Default for CampaignData {
     fn default() -> Self {
-       Self{
-              properties: vec![],
-              seed: 0,
-              failed_traces: vec![],
-             status: CampaignStatus::Initializing
-       }
+        Self {
+            properties: vec![],
+            seed: 0,
+            failed_traces: vec![],
+            status: CampaignStatus::Initializing,
+        }
     }
 }
 
@@ -299,7 +312,7 @@ pub struct Engine<T: OutputTrait> {
     config: Config,
 
     // Output module
-    output: T
+    output: T,
 }
 
 type SnapshotCache = HashMap<TraceHash, TraceState>;
@@ -326,7 +339,10 @@ impl TraceState {
     }
 }
 
-impl<T> Engine<T> where T: OutputTrait {
+impl<T> Engine<T>
+where
+    T: OutputTrait,
+{
     // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
@@ -348,80 +364,91 @@ impl<T> Engine<T> where T: OutputTrait {
         let ink = self.contract.transcoder.metadata();
         let registry = ink.registry();
 
-            for spec in ink.spec().constructors().iter() {
-                let selector: [u8; 4] = spec
-                    .selector()
-                    .to_bytes()
-                    .try_into()
-                    .expect("Selector Must be 4 bytes long");
+        for spec in ink.spec().constructors().iter() {
+            let selector: [u8; 4] = spec
+                .selector()
+                .to_bytes()
+                .try_into()
+                .expect("Selector Must be 4 bytes long");
 
-                let mut arguments = vec![];
-                for arg in spec.args() {
-                    let arg = &registry
-                        .resolve(arg.ty().ty().id)
-                        .ok_or(anyhow!("Cannot resolve {:?}", arg))?
-                        .type_def;
-                    arguments.push(arg.clone());
-                }
-                let method_info = MethodInfo::new(spec.label().to_string(), arguments, true, spec.payable, true);
-                self.method_info.insert(selector, method_info);
-                self.constructors.insert(selector);
+            let mut arguments = vec![];
+            for arg in spec.args() {
+                let arg = &registry
+                    .resolve(arg.ty().ty().id)
+                    .ok_or(anyhow!("Cannot resolve {:?}", arg))?
+                    .type_def;
+                arguments.push(arg.clone());
             }
-            for spec in ink.spec().messages().iter() {
-                let selector: [u8; 4] = spec
-                    .selector()
-                    .to_bytes()
-                    .try_into()
-                    .expect("Selector Must be 4 bytes long");
-                let mut arguments = vec![];
-                for arg in spec.args() {
-                    let arg = &registry
-                        .resolve(arg.ty().ty().id)
-                        .ok_or(anyhow!("Cannot resolve {:?}", arg))?
-                        .type_def;
-                    arguments.push(arg.clone());
-                }
-                let method_info =
-                    MethodInfo::new(spec.label().to_string(), arguments, spec.mutates(), spec.payable(), false);
-                self.method_info.insert(selector, method_info);
-                if self.is_property(spec.label()) {
-                    self.properties.insert(selector);
-                }
-                // TODO: configure if we must use messages that are marked as non mutating
-                if !self.config.only_mutable || spec.mutates() {
-                    self.messages.insert(selector);
-                }
-            }
-            Ok(())
+            let method_info = MethodInfo::new(
+                spec.label().to_string(),
+                arguments,
+                true,
+                spec.payable,
+                true,
+            );
+            self.method_info.insert(selector, method_info);
+            self.constructors.insert(selector);
         }
+        for spec in ink.spec().messages().iter() {
+            let selector: [u8; 4] = spec
+                .selector()
+                .to_bytes()
+                .try_into()
+                .expect("Selector Must be 4 bytes long");
+            let mut arguments = vec![];
+            for arg in spec.args() {
+                let arg = &registry
+                    .resolve(arg.ty().ty().id)
+                    .ok_or(anyhow!("Cannot resolve {:?}", arg))?
+                    .type_def;
+                arguments.push(arg.clone());
+            }
+            let method_info = MethodInfo::new(
+                spec.label().to_string(),
+                arguments,
+                spec.mutates(),
+                spec.payable(),
+                false,
+            );
+            self.method_info.insert(selector, method_info);
+            if self.is_property(spec.label()) {
+                self.properties.insert(selector);
+            }
+            // TODO: configure if we must use messages that are marked as non mutating
+            if !self.config.only_mutable || spec.mutates() {
+                self.messages.insert(selector);
+            }
+        }
+        Ok(())
+    }
 
-        pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
-            info!("Loading contract from {:?}", contract_path);
-            let contract = ContractBundle::load(contract_path)?;
-          
-            let output = T::new(contract.clone());
-            //let output2 = ConsoleOutput::new(contract.clone());
-            
-            // TODO: fix callers
-            let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
-            let mut engine = Self {
-                // Contract Info
-                contract,
+    pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
+        info!("Loading contract from {:?}", contract_path);
+        let contract = ContractBundle::load(contract_path)?;
 
-                // Rapid access to function info
-                method_info: HashMap::new(),
-                constructors: HashSet::new(),
-                messages: HashSet::new(),
-                properties: HashSet::new(),
+        let output = T::new(contract.clone());
+        // let output2 = ConsoleOutput::new(contract.clone());
 
-                // Cache
-                snapshot_cache: HashMap::new(),
+        // TODO: fix callers
+        let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
+        let mut engine = Self {
+            // Contract Info
+            contract,
 
-                // Settings
-                config,
+            // Rapid access to function info
+            method_info: HashMap::new(),
+            constructors: HashSet::new(),
+            messages: HashSet::new(),
+            properties: HashSet::new(),
 
-                // Output module
-                output
+            // Cache
+            snapshot_cache: HashMap::new(),
+
+            // Settings
+            config,
+
+            // Output module
+            output,
         };
         engine.extract_method_info()?;
         Ok(engine)
@@ -647,19 +674,21 @@ impl<T> Engine<T> where T: OutputTrait {
         todo!()
     }
 
-    pub fn run_campaign(&mut self, campaign_data: &mut Arc<RwLock<CampaignData>>) -> Result<CampaignResult> {
+    pub fn run_campaign(
+        &mut self,
+        campaign_data: &mut Arc<RwLock<CampaignData>>,
+    ) -> Result<CampaignResult> {
         // Set the init config in the output
         self.output.start_campaign(
             self.config.seed,
-            self
-            .method_info
-            .iter()
-            .filter(|(selector, _)| self.properties.contains(selector.clone()))
-            .map(|(_selector, method_info)| method_info.method_name.clone())
-            .collect(),
+            self.method_info
+                .iter()
+                .filter(|(selector, _)| self.properties.contains(selector.clone()))
+                .map(|(_selector, method_info)| method_info.method_name.clone())
+                .collect(),
             self.config.max_rounds,
         );
-        
+
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
         let rng_seed = self.config.seed;
@@ -678,7 +707,8 @@ impl<T> Engine<T> where T: OutputTrait {
             failed_traces.extend(new_failed_traces);
 
             // TODO: Only update the campaign data if new failed traces are found.
-            // TODO: Maybe send a message to worker thread to make checks and perform updates
+            // TODO: Maybe send a message to worker thread to make checks and perform
+            // updates
             self.output.update_failed_traces(failed_traces.clone());
             self.output.incr_iteration();
 
@@ -897,8 +927,6 @@ impl<T> Engine<T> where T: OutputTrait {
         }
         Ok(failed_traces)
     }
-
-  
 }
 
 #[cfg(test)]
@@ -945,7 +973,8 @@ mod tests {
     #[test]
     fn test_method_info() {
         let arguments = vec![];
-        let method_info = MethodInfo::new(String::from("Name"), arguments, true, true, false);
+        let method_info =
+            MethodInfo::new(String::from("Name"), arguments, true, true, false);
         assert!(method_info.mutates);
         assert!(method_info.payable);
         assert!(!method_info.constructor);

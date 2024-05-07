@@ -1,17 +1,55 @@
-use std::{io::{self, stdout, Stdout}, sync::{Arc, RwLock}, thread, time::Duration};
+use std::{
+    io::{
+        self,
+        stdout,
+        Stdout,
+    },
+    sync::{
+        Arc,
+        RwLock,
+    },
+    thread,
+    time::Duration,
+};
 
-use ratatui::{prelude::*, widgets::{block::Title, Block}};
+use ratatui::{
+    prelude::*,
+    widgets::{
+        block::Title,
+        Block,
+    },
+};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{
+    self,
+    Event,
+    KeyCode,
+    KeyEvent,
+    KeyEventKind,
+};
 use ratatui::{
     symbols::border,
-    widgets::{block::*, *},
+    widgets::{
+        block::*,
+        *,
+    },
 };
 
 use crate::engine::CampaignData;
 
-use crossterm::{execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
-use ratatui::{backend::CrosstermBackend, Terminal};
+use crossterm::{
+    execute,
+    terminal::{
+        disable_raw_mode,
+        enable_raw_mode,
+        EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    Terminal,
+};
 
 use super::ui::ui;
 
@@ -48,7 +86,7 @@ impl App {
     fn handle_events(&mut self) -> io::Result<()> {
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key_event) = event::read()? {
-                if key_event.kind == KeyEventKind::Press{
+                if key_event.kind == KeyEventKind::Press {
                     self.handle_key_event(key_event);
                 }
             }
@@ -75,7 +113,7 @@ impl App {
         enable_raw_mode()?;
         Terminal::new(CrosstermBackend::new(stdout()))
     }
-    
+
     /// Restore the terminal to its original state
     fn restore_terminal(&self) -> io::Result<()> {
         execute!(stdout(), LeaveAlternateScreen)?;

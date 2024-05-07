@@ -7,7 +7,10 @@ use std::{
 };
 
 use contract_metadata::ContractMetadata;
-use contract_transcode::{ContractMessageTranscoder, Value};
+use contract_transcode::{
+    ContractMessageTranscoder,
+    Value,
+};
 
 use anyhow::Result;
 

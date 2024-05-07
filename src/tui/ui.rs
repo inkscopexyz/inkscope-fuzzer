@@ -1,12 +1,33 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{
+        Constraint,
+        Direction,
+        Layout,
+        Rect,
+    },
     prelude::*,
-    style::{Color, Style},
+    style::{
+        Color,
+        Style,
+    },
     symbols::border,
-    text::{Line, Span, Text},
+    text::{
+        Line,
+        Span,
+        Text,
+    },
     widgets::{
-        block::{Position, Title},
-        Block, Borders, Clear, List, ListItem, Paragraph, Wrap,
+        block::{
+            Position,
+            Title,
+        },
+        Block,
+        Borders,
+        Clear,
+        List,
+        ListItem,
+        Paragraph,
+        Wrap,
     },
     Frame,
 };
@@ -144,13 +165,10 @@ fn render_finished(f: &mut Frame, app: &App) {
         lines = vec![Line::from("Bug found").alignment(Alignment::Center).red()];
         // Only show the first failed trace
         let failed_trace = &app.local_campaign_data.failed_traces[0];
-        
-       
     } else {
         lines = vec![Line::from("No bug found")
             .alignment(Alignment::Center)
             .green()];
-        
     }
     let widget = Paragraph::new(lines).centered().block(fuzzer_block);
     f.render_widget(widget, chunks[1]);

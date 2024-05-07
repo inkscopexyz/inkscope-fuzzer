@@ -5,13 +5,16 @@ mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
-mod tui;
 mod info;
 #[cfg(test)]
 mod tests;
+mod tui;
 mod types;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{
+    Arc,
+    RwLock,
+};
 
 use crate::config::Config;
 use anyhow::{
@@ -23,8 +26,15 @@ use clap::{
     Parser,
 };
 use cli::Cli;
-use engine::{CampaignData, CampaignStatus, Engine};
-use info::{ConsoleOutput, TuiOutput};
+use engine::{
+    CampaignData,
+    CampaignStatus,
+    Engine,
+};
+use info::{
+    ConsoleOutput,
+    TuiOutput,
+};
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -43,13 +53,12 @@ fn main() -> Result<()> {
     let contract_path = cli.contract;
 
     let campaign_data = Arc::new(RwLock::new(CampaignData::default()));
-    
+
     // Run the fuzzer
-    if config.use_tui{
+    if config.use_tui {
         let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
         engine.run_campaign(&mut Arc::clone(&campaign_data))?;
-    }
-    else{
+    } else {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
         engine.run_campaign(&mut Arc::clone(&campaign_data))?;
     }

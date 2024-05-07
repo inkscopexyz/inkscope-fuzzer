@@ -3,9 +3,19 @@ pub mod testing {
 
     use crate::{
         config::Config,
-        engine::{CampaignData, Engine}, info::ConsoleOutput,
+        engine::{
+            CampaignData,
+            Engine,
+        },
+        info::ConsoleOutput,
     };
-    use std::{path::PathBuf, sync::{Arc, RwLock}};
+    use std::{
+        path::PathBuf,
+        sync::{
+            Arc,
+            RwLock,
+        },
+    };
 
     fn test_contract(
         contract_path: PathBuf,
@@ -15,7 +25,7 @@ pub mod testing {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
         let campaign_data = Arc::new(RwLock::new(CampaignData::default()));
         let campaign_result = engine.run_campaign(&mut Arc::clone(&campaign_data))?;
-        //engine.print_campaign_result(&campaign_result);
+        // engine.print_campaign_result(&campaign_result);
 
         // Check that the campaign result is as expected
         if should_find_broken_properties {

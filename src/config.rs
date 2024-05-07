@@ -61,7 +61,7 @@ pub struct Config {
     pub constants: Constants,
 
     // If true, the fuzzer will use the TUI
-    pub use_tui: bool
+    pub use_tui: bool,
 }
 
 impl Default for Config {
