@@ -37,7 +37,6 @@ impl App {
         self.init_terminal()?;
         while !self.exit {
             self.local_campaign_data = self.campaign_data.read().unwrap().clone();
-            //terminal.draw(|frame| self.render_frame(frame))?;
             terminal.draw(|frame| ui(frame, self))?;
             self.handle_events()?;
             thread::sleep(Duration::from_millis(100));

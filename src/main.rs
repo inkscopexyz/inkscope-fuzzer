@@ -24,7 +24,7 @@ use clap::{
 };
 use cli::Cli;
 use engine::{CampaignData, CampaignStatus, Engine};
-use info::Info;
+use info::{ConsoleOutput, TuiOutput};
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -44,22 +44,15 @@ fn main() -> Result<()> {
 
     let campaign_data = Arc::new(RwLock::new(CampaignData::default()));
     
-    // Init info module
-    let mut info_mod = Info::new();
-    info_mod.init(Arc::clone(&campaign_data), true )?;
-
     // Run the fuzzer
-    let mut engine = Engine::new(contract_path, config)?;
-    let campaign_result = engine.run_campaign(&mut Arc::clone(&campaign_data))?;
-    
-    // Mark the campaign as finished
-    campaign_data.write().unwrap().status = CampaignStatus::Finished;
-    
-    // Finalize the info module
-    info_mod.finalize()?;
-
-    // Print the campaign result
-    engine.print_campaign_result(&campaign_result);
+    if config.use_tui{
+        let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
+        engine.run_campaign(&mut Arc::clone(&campaign_data))?;
+    }
+    else{
+        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+        engine.run_campaign(&mut Arc::clone(&campaign_data))?;
+    }
 
     Ok(())
 }

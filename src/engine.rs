@@ -1,15 +1,11 @@
 use crate::{
-    config::Config,
-    contract_bundle::ContractBundle,
-    fuzzer::Fuzzer,
-    generator::Generator,
-    types::{
+    config::Config, contract_bundle::ContractBundle, fuzzer::Fuzzer, generator::Generator, info::{ConsoleOutput, OutputTrait, TuiOutput}, types::{
         AccountId,
         Balance,
         CodeHash,
         Hashing,
         TraceHash,
-    },
+    }
 };
 
 use anyhow::{
@@ -286,7 +282,7 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
     }
 }
 
-pub struct Engine {
+pub struct Engine<T: OutputTrait> {
     // Contract Info
     contract: ContractBundle,
 
@@ -301,6 +297,9 @@ pub struct Engine {
 
     // Settings
     config: Config,
+
+    // Output module
+    output: T
 }
 
 type SnapshotCache = HashMap<TraceHash, TraceState>;
@@ -327,7 +326,7 @@ impl TraceState {
     }
 }
 
-impl Engine {
+impl<T> Engine<T> where T: OutputTrait {
     // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
@@ -349,74 +348,80 @@ impl Engine {
         let ink = self.contract.transcoder.metadata();
         let registry = ink.registry();
 
-        for spec in ink.spec().constructors().iter() {
-            let selector: [u8; 4] = spec
-                .selector()
-                .to_bytes()
-                .try_into()
-                .expect("Selector Must be 4 bytes long");
+            for spec in ink.spec().constructors().iter() {
+                let selector: [u8; 4] = spec
+                    .selector()
+                    .to_bytes()
+                    .try_into()
+                    .expect("Selector Must be 4 bytes long");
 
-            let mut arguments = vec![];
-            for arg in spec.args() {
-                let arg = &registry
-                    .resolve(arg.ty().ty().id)
-                    .ok_or(anyhow!("Cannot resolve {:?}", arg))?
-                    .type_def;
-                arguments.push(arg.clone());
+                let mut arguments = vec![];
+                for arg in spec.args() {
+                    let arg = &registry
+                        .resolve(arg.ty().ty().id)
+                        .ok_or(anyhow!("Cannot resolve {:?}", arg))?
+                        .type_def;
+                    arguments.push(arg.clone());
+                }
+                let method_info = MethodInfo::new(spec.label().to_string(), arguments, true, spec.payable, true);
+                self.method_info.insert(selector, method_info);
+                self.constructors.insert(selector);
             }
-            let method_info = MethodInfo::new(spec.label().to_string(), arguments, true, spec.payable, true);
-            self.method_info.insert(selector, method_info);
-            self.constructors.insert(selector);
+            for spec in ink.spec().messages().iter() {
+                let selector: [u8; 4] = spec
+                    .selector()
+                    .to_bytes()
+                    .try_into()
+                    .expect("Selector Must be 4 bytes long");
+                let mut arguments = vec![];
+                for arg in spec.args() {
+                    let arg = &registry
+                        .resolve(arg.ty().ty().id)
+                        .ok_or(anyhow!("Cannot resolve {:?}", arg))?
+                        .type_def;
+                    arguments.push(arg.clone());
+                }
+                let method_info =
+                    MethodInfo::new(spec.label().to_string(), arguments, spec.mutates(), spec.payable(), false);
+                self.method_info.insert(selector, method_info);
+                if self.is_property(spec.label()) {
+                    self.properties.insert(selector);
+                }
+                // TODO: configure if we must use messages that are marked as non mutating
+                if !self.config.only_mutable || spec.mutates() {
+                    self.messages.insert(selector);
+                }
+            }
+            Ok(())
         }
-        for spec in ink.spec().messages().iter() {
-            let selector: [u8; 4] = spec
-                .selector()
-                .to_bytes()
-                .try_into()
-                .expect("Selector Must be 4 bytes long");
-            let mut arguments = vec![];
-            for arg in spec.args() {
-                let arg = &registry
-                    .resolve(arg.ty().ty().id)
-                    .ok_or(anyhow!("Cannot resolve {:?}", arg))?
-                    .type_def;
-                arguments.push(arg.clone());
-            }
-            let method_info =
-                MethodInfo::new(spec.label().to_string(), arguments, spec.mutates(), spec.payable(), false);
-            self.method_info.insert(selector, method_info);
-            if self.is_property(spec.label()) {
-                self.properties.insert(selector);
-            }
-            // TODO: configure if we must use messages that are marked as non mutating
-            if !self.config.only_mutable || spec.mutates() {
-                self.messages.insert(selector);
-            }
-        }
-        Ok(())
-    }
 
-    pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
-        info!("Loading contract from {:?}", contract_path);
-        let contract = ContractBundle::load(contract_path)?;
+        pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
+            info!("Loading contract from {:?}", contract_path);
+            let contract = ContractBundle::load(contract_path)?;
+          
+            let output = T::new(contract.clone());
+            //let output2 = ConsoleOutput::new(contract.clone());
+            
+            // TODO: fix callers
+            let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
+            let mut engine = Self {
+                // Contract Info
+                contract,
 
-        // TODO: fix callers
-        let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
-        let mut engine = Self {
-            // Contract Info
-            contract,
+                // Rapid access to function info
+                method_info: HashMap::new(),
+                constructors: HashSet::new(),
+                messages: HashSet::new(),
+                properties: HashSet::new(),
 
-            // Rapid access to function info
-            method_info: HashMap::new(),
-            constructors: HashSet::new(),
-            messages: HashSet::new(),
-            properties: HashSet::new(),
+                // Cache
+                snapshot_cache: HashMap::new(),
 
-            // Cache
-            snapshot_cache: HashMap::new(),
+                // Settings
+                config,
 
-            // Settings
-            config,
+                // Output module
+                output
         };
         engine.extract_method_info()?;
         Ok(engine)
@@ -643,15 +648,17 @@ impl Engine {
     }
 
     pub fn run_campaign(&mut self, campaign_data: &mut Arc<RwLock<CampaignData>>) -> Result<CampaignResult> {
-        // Set the seed and properties in the campaign data
-        campaign_data.write().unwrap().seed = self.config.seed;
-        campaign_data.write().unwrap().properties = self
+        // Set the init config in the output
+        self.output.start_campaign(
+            self.config.seed,
+            self
             .method_info
             .iter()
             .filter(|(selector, _)| self.properties.contains(selector.clone()))
             .map(|(_selector, method_info)| method_info.method_name.clone())
-            .collect();
-        campaign_data.write().unwrap().status = CampaignStatus::InProgress;
+            .collect(),
+            self.config.max_rounds,
+        );
         
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
@@ -672,7 +679,7 @@ impl Engine {
 
             // TODO: Only update the campaign data if new failed traces are found.
             // TODO: Maybe send a message to worker thread to make checks and perform updates
-            campaign_data.write().unwrap().failed_traces = failed_traces.clone();
+            self.output.update_failed_traces(failed_traces.clone());
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
             if !failed_traces.is_empty() && fail_fast {
@@ -681,6 +688,7 @@ impl Engine {
             self.snapshot_cache.extend(local_snapshot_cache);
         }
 
+        self.output.end_campaign();
         println!("Elapsed time: {:?}", start_time.elapsed());
         Ok(CampaignResult { failed_traces })
     }
@@ -889,101 +897,7 @@ impl Engine {
         Ok(failed_traces)
     }
 
-    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
-        let output = Output::new(&self.contract);
-        output.print_campaign_result(campaign_result);
-    }
-}
-
-pub struct Output<'a> {
-    contract: &'a ContractBundle,
-}
-
-impl<'a> Output<'a> {
-    pub fn new(contract: &'a ContractBundle) -> Self {
-        Self { contract }
-    }
-    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_message(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_constructor(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    fn print_value(value: &Value) {
-        match value {
-            Value::Map(map) => {
-                print!("{}(", map.ident().unwrap());
-                for (n, (_name, value)) in map.iter().enumerate() {
-                    if n != 0 {
-                        print!(", ");
-                    }
-                    Self::print_value(value);
-                }
-                print!(")");
-            }
-            _ => {
-                print!("{:?}", value);
-            }
-        }
-    }
-
-    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
-        for failed_trace in &campaign_result.failed_traces {
-            println!("Property check failed ❌");
-
-            // Messages
-            for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
-            {
-                print!("  Message{}: ", idx);
-                let decode_result = match deploy_or_message {
-                    DeployOrMessage::Deploy(deploy) => self.decode_deploy(&deploy.data),
-                    DeployOrMessage::Message(message) => {
-                        self.decode_message(&message.input)
-                    }
-                };
-                match decode_result {
-                    Err(_e) => {
-                        println!("Raw message: {:?}", &deploy_or_message.data());
-                    }
-                    Result::Ok(x) => {
-                        print!("  Message: ",);
-                        Self::print_value(&x);
-                        println!();
-                    }
-                }
-            }
-
-            match &failed_trace.reason {
-                FailReason::Trapped => println!("Last message in trace has Trapped"),
-                FailReason::Property(failed_property) => {
-                    // Failed properties
-
-                    match self.decode_message(&failed_property.input) {
-                        Err(_e) => {
-                            println!("Raw message: {:?}", &failed_property.input);
-                        }
-                        Result::Ok(x) => {
-                            print!("  Property: ",);
-                            Self::print_value(&x);
-                            println!();
-                        }
-                    }
-                }
-            };
-        }
-    }
+  
 }
 
 #[cfg(test)]

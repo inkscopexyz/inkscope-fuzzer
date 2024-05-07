@@ -29,7 +29,7 @@ pub struct Config {
     pub fail_fast: bool,
 
     // Max number of iterations to run the fuzzer
-    pub max_rounds: usize,
+    pub max_rounds: u64,
 
     // Max endowment that can be sent in a fuzzed message
     pub budget: Balance,
@@ -59,6 +59,9 @@ pub struct Config {
 
     // Initial set of constant values to use in the fuzzing
     pub constants: Constants,
+
+    // If true, the fuzzer will use the TUI
+    pub use_tui: bool
 }
 
 impl Default for Config {
@@ -90,6 +93,7 @@ impl Default for Config {
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,
             constants: Constants::default(),
+            use_tui: true,
         }
     }
 }
