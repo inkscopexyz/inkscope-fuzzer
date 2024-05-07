@@ -132,13 +132,13 @@ impl MethodInfo {
 
 #[derive(StdHash, Debug, Clone)]
 pub struct Deploy {
-    caller: AccountId,
-    endowment: Balance,
-    contract_bytes: Vec<u8>,
-    data: Vec<u8>,
-    salt: Vec<u8>,
-    code_hash: CodeHash,
-    address: AccountId,
+    pub caller: AccountId,
+    pub endowment: Balance,
+    pub contract_bytes: Vec<u8>,
+    pub data: Vec<u8>,
+    pub salt: Vec<u8>,
+    pub code_hash: CodeHash,
+    pub address: AccountId,
 }
 impl Deploy {
     pub fn new(
@@ -182,7 +182,7 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, Hash)]
-enum DeployOrMessage {
+pub enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
 }
@@ -197,7 +197,7 @@ impl DeployOrMessage {
 
 #[derive(Debug, Clone)]
 pub struct Trace {
-    messages: Vec<DeployOrMessage>,
+    pub messages: Vec<DeployOrMessage>,
 }
 
 impl Trace {
@@ -680,6 +680,7 @@ impl<T> Engine<T> where T: OutputTrait {
             // TODO: Only update the campaign data if new failed traces are found.
             // TODO: Maybe send a message to worker thread to make checks and perform updates
             self.output.update_failed_traces(failed_traces.clone());
+            self.output.incr_iteration();
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
             if !failed_traces.is_empty() && fail_fast {
