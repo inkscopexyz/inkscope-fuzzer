@@ -5,10 +5,9 @@ mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
-mod info;
+mod output;
 #[cfg(test)]
 mod tests;
-mod tui;
 mod types;
 
 use std::sync::{
@@ -31,7 +30,7 @@ use engine::{
     CampaignStatus,
     Engine,
 };
-use info::{
+use output::output::{
     ConsoleOutput,
     TuiOutput,
 };

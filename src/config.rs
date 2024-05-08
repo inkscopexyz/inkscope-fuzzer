@@ -93,7 +93,7 @@ impl Default for Config {
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,
             constants: Constants::default(),
-            use_tui: false,
+            use_tui: true,
         }
     }
 }

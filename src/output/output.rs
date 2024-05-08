@@ -8,10 +8,6 @@ use crate::{
         FailReason,
         FailedTrace,
     },
-    tui::{
-        self,
-        app::App,
-    },
 };
 use std::{
     io::{
@@ -30,6 +26,11 @@ use std::{
 };
 
 use crate::engine::CampaignData;
+
+use super::tui::{
+    self,
+    app::App,
+};
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;
@@ -175,14 +176,18 @@ impl OutputTrait for TuiOutput {
         // self.campaign_data.write().unwrap().max_iterations = max_iterations;
         self.campaign_data.write().unwrap().status = CampaignStatus::InProgress;
         let campaign_data = Arc::clone(&self.campaign_data);
+        let contract = self.contract.clone();
         let tui_thread = thread::spawn(move || {
-            let mut app = App::new(campaign_data);
+            let mut app = App::new(campaign_data, contract);
             let mut terminal = tui::terminal::init().unwrap();
             app.run(&mut terminal).unwrap();
         });
         self.tui_thread = Some(tui_thread);
     }
     fn end_campaign(&mut self) -> io::Result<()> {
+        // Set the campaign status to finished
+        self.campaign_data.write().unwrap().status = CampaignStatus::Finished;
+
         if let Some(handle) = self.tui_thread.take() {
             // Wait for the tui thread to finish
             handle.join().unwrap();
@@ -202,14 +207,14 @@ impl OutputTrait for TuiOutput {
         self.campaign_data.write().unwrap().failed_traces = failed_traces;
     }
     fn incr_iteration(&mut self) {
-        if self
-            .current_iteration
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            % 100
-            == 0
-        {
-            println!(".");
-        }
+        // if self
+        //     .current_iteration
+        //     .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        //     % 100
+        //     == 0
+        // {
+        //     println!(".");
+        // }
     }
 }
 

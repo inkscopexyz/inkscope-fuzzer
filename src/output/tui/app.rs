@@ -35,7 +35,10 @@ use ratatui::{
     },
 };
 
-use crate::engine::CampaignData;
+use crate::{
+    contract_bundle::ContractBundle,
+    engine::CampaignData,
+};
 
 use crossterm::{
     execute,
@@ -58,14 +61,19 @@ pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
 pub struct App {
     pub campaign_data: Arc<RwLock<CampaignData>>,
+    pub contract: ContractBundle,
     pub local_campaign_data: CampaignData,
     pub exit: bool,
 }
 impl App {
-    pub fn new(campaign_data: Arc<RwLock<CampaignData>>) -> Self {
+    pub fn new(
+        campaign_data: Arc<RwLock<CampaignData>>,
+        contract: ContractBundle,
+    ) -> Self {
         let local_campaign_data = campaign_data.read().unwrap().clone();
         Self {
             campaign_data,
+            contract,
             local_campaign_data,
             exit: false,
         }

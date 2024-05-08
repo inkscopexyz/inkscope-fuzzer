@@ -3,7 +3,7 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
-    info::{
+    output::output::{
         ConsoleOutput,
         OutputTrait,
         TuiOutput,

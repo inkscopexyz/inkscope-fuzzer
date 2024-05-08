@@ -7,7 +7,7 @@ pub mod testing {
             CampaignData,
             Engine,
         },
-        info::ConsoleOutput,
+        output::output::ConsoleOutput,
     };
     use std::{
         path::PathBuf,
