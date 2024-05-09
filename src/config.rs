@@ -46,6 +46,9 @@ pub struct Config {
     // Max number of transactions that can be generated in a given run
     pub max_number_of_transactions: usize,
 
+    // Max attempts to optimize (reduce) a failed trace. ()
+    pub max_optimization_rounds:usize,
+
     // Max gas limit for a transaction
     pub gas_limit: Weight,
 
@@ -86,6 +89,7 @@ impl Default for Config {
             only_mutable: true,
             max_sequence_type_size: 10,
             max_number_of_transactions: 50,
+            max_optimization_rounds: 50,
             gas_limit: Weight::max_value(),
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,

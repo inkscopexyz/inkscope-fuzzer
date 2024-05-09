@@ -89,6 +89,12 @@ impl FailedTrace {
         Self { trace, reason }
     }
 
+    /// Returns the first 4 bytes of the method id that make this trace fail. 
+    /// Could be the property that failed or the last message tha trapped
+    pub fn method_id(&self) -> Vec<u8>{
+        self.failed_data().iter().take(4).cloned().collect()
+    }
+
     /// Return the calldata that made the trace fail (Could be from a message that trapped
     /// or a property that failed)
     pub fn failed_data(&self) -> &Vec<u8> {
@@ -634,27 +640,15 @@ impl Engine {
     ) -> Result<FailedTrace> {
         // Only the deployment in the trace. Can not be optimized by this.
         if failed_trace.trace.messages.len() <= 1 {
-        // Can not optimize a a trace with only one deploy.
-        if failed_trace.trace.messages.len() <= 1{
             return Ok(failed_trace)
         }
 
-        // Skip the first message / keep de deployment
-
-        let mut smallest_trace = failed_trace.clone();
+        let mut smallest_trace = failed_trace;
         let mut local_snapshot_cache = SnapshotCache::new();
-        let mut decreased = false;
         let mut no_decreased_count = 0usize;
-        loop {
-            if !decreased {
-                no_decreased_count += 1;
-                if no_decreased_count > 100 {
-                    break;
-                }
-            } else {
-                no_decreased_count = 0;
-                decreased = false;
-            }
+        while no_decreased_count < self.config.max_optimization_rounds
+        {
+            // Always keep tyhe first message  deployment
             let remove_idx = fuzzer.rng.usize(1..smallest_trace.trace.messages.len());
 
             let mut sandbox = DefaultSandbox::default();
@@ -681,6 +675,7 @@ impl Engine {
                     &mut current_snapshot,
                     &new_trace,
                 )?;
+
                 for reason in result {
                     let new_failed_trace = FailedTrace {
                         trace: new_trace.clone(),
@@ -688,9 +683,11 @@ impl Engine {
                     };
                     if new_failed_trace < smallest_trace {
                         smallest_trace = new_failed_trace;
+                        no_decreased_count = 0;
                     }
                 }
             }
+            no_decreased_count += 1;
         }
         Ok(smallest_trace)
     }
@@ -699,8 +696,6 @@ impl Engine {
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
         let rng_seed = self.config.seed;
-
-        let start_time = std::time::Instant::now();
 
         let mut failed_traces: Vec<FailedTrace> = vec![];
         let mut fuzzer = Fuzzer::new(rng_seed, self.config.constants.clone());
@@ -725,10 +720,12 @@ impl Engine {
         let mut new_failed_traces = HashMap::new();
         for ft in failed_traces {
             let ft = self.optimize(&mut fuzzer, ft)?;
-            let mut key = vec![];
-            for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
-                key.push(*c);
-            }
+            // let mut key: Vec<u8> = ft.failed_data().iter().take(4).cloned().collect();
+            // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
+            //     key.push(*c);
+            // };
+            // let t: Vec<u8> = 
+            let key = ft.method_id();
             match new_failed_traces.get(&key) {
                 None => {
                     new_failed_traces.insert(key, ft.clone());
@@ -741,13 +738,8 @@ impl Engine {
                 }
             }
         }
-        println!("Elapsed time: {:?}", start_time.elapsed());
-        let mut failed_traces = vec![];
-        for ft in new_failed_traces.values() {
-            failed_traces.push(ft.clone());
-        }
 
-        Ok(CampaignResult { failed_traces })
+        Ok(CampaignResult { failed_traces: new_failed_traces.values().cloned().collect() })
     }
 
     fn init<'a>(
