@@ -95,7 +95,7 @@ fn render_finished(f: &mut Frame, app: &App) {
         ])
         .split(f.size());
 
-    let main_widget = get_main_widget("In Progress");
+    let main_widget = get_main_widget("Finished");
     f.render_widget(main_widget, chunks[0]);
 
     let config_widget = get_config_widget(app);
@@ -193,7 +193,6 @@ fn get_trace_widget(app: &App) -> Paragraph {
             }
 
             // Messages
-            lines.push(Line::from(failed_trace.trace.messages.len().to_string()));
             for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
             {
                 let mut message_data = vec![];

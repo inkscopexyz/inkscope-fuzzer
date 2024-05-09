@@ -676,7 +676,6 @@ where
 
     pub fn run_campaign(
         &mut self,
-        campaign_data: &mut Arc<RwLock<CampaignData>>,
     ) -> Result<CampaignResult> {
         // Set the init config in the output
         self.output.start_campaign(
