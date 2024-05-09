@@ -598,7 +598,7 @@ impl Engine {
             // If the property has arguments, fuzz them
             for _round in 0..max_rounds {
                 let property_message =
-                    self.generate_message(fuzzer, property, &contract_address)?;
+                    self.generate_message(fuzzer, property, contract_address)?;
 
                 let result = self.execute_message(sandbox, &property_message);
 
@@ -633,12 +633,11 @@ impl Engine {
         failed_trace: FailedTrace,
     ) -> Result<FailedTrace> {
         // Only the deployment in the trace. Can not be optimized by this.
-        if failed_trace.trace.messages.len() <= 1{
+        if failed_trace.trace.messages.len() <= 1 {
             return Ok(failed_trace)
         }
 
         // Skip the first message / keep de deployment
-        let failed_calldata = &failed_trace.failed_data().clone();
 
         let mut smallest_trace = failed_trace.clone();
         let mut local_snapshot_cache = SnapshotCache::new();
@@ -846,7 +845,7 @@ impl Engine {
                     DeployOrMessageResult::Success(output) => {
                         // If it did not revert or panic we check the properties
                         let failed_properties =
-                            self.check_properties(fuzzer, sandbox, &trace)?;
+                            self.check_properties(fuzzer, sandbox, trace)?;
                         if !failed_properties.is_empty() {
                             for failed_property in &failed_properties {
                                 debug!("Property check failed: {:?}", failed_property);
