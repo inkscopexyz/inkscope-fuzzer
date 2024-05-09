@@ -47,7 +47,7 @@ pub struct Config {
     pub max_number_of_transactions: usize,
 
     // Max attempts to optimize (reduce) a failed trace. ()
-    pub max_optimization_rounds:usize,
+    pub max_optimization_rounds: usize,
 
     // Max gas limit for a transaction
     pub gas_limit: Weight,

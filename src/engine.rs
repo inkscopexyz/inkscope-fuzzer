@@ -89,9 +89,9 @@ impl FailedTrace {
         Self { trace, reason }
     }
 
-    /// Returns the first 4 bytes of the method id that make this trace fail. 
+    /// Returns the first 4 bytes of the method id that make this trace fail.
     /// Could be the property that failed or the last message tha trapped
-    pub fn method_id(&self) -> Vec<u8>{
+    pub fn method_id(&self) -> Vec<u8> {
         self.failed_data().iter().take(4).cloned().collect()
     }
 
@@ -646,8 +646,7 @@ impl Engine {
         let mut smallest_trace = failed_trace;
         let mut local_snapshot_cache = SnapshotCache::new();
         let mut no_decreased_count = 0usize;
-        while no_decreased_count < self.config.max_optimization_rounds
-        {
+        while no_decreased_count < self.config.max_optimization_rounds {
             // Always keep tyhe first message  deployment
             let remove_idx = fuzzer.rng.usize(1..smallest_trace.trace.messages.len());
 
@@ -724,7 +723,7 @@ impl Engine {
             // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
             //     key.push(*c);
             // };
-            // let t: Vec<u8> = 
+            // let t: Vec<u8> =
             let key = ft.method_id();
             match new_failed_traces.get(&key) {
                 None => {
@@ -739,7 +738,9 @@ impl Engine {
             }
         }
 
-        Ok(CampaignResult { failed_traces: new_failed_traces.values().cloned().collect() })
+        Ok(CampaignResult {
+            failed_traces: new_failed_traces.values().cloned().collect(),
+        })
     }
 
     fn init<'a>(
