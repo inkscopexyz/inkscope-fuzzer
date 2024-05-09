@@ -67,7 +67,7 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
@@ -636,6 +636,11 @@ impl Engine {
         fuzzer: &mut Fuzzer,
         failed_trace: FailedTrace,
     ) -> Result<FailedTrace> {
+        // Only the deployment in the trace. Can not be optimized by this.
+        if failed_trace.trace.messages.len() <= 1{
+            return Ok(failed_trace)
+        }
+
         // Skip the first message / keep de deployment
         let failed_calldata = &failed_trace.failed_data().clone();
 
@@ -644,7 +649,6 @@ impl Engine {
         let mut decreased = false;
         let mut no_decreased_count = 0usize;
         loop {
-            iteration += 1;
             if !decreased {
                 no_decreased_count += 1;
                 if no_decreased_count > 100 {
@@ -688,14 +692,11 @@ impl Engine {
                         }
                     };
 
-                    if cmp4(failing_method_calldata, failed_calldata) {
-                        if smallest_trace.trace.messages.len() > new_trace.messages.len()
-                        {
-                            smallest_trace =
-                                FailedTrace::new(new_trace.clone(), reason.clone());
-                            decreased = true;
-                            break;
-                        }
+                    if cmp4(failing_method_calldata, failed_calldata) && smallest_trace.trace.messages.len() > new_trace.messages.len() {
+                        smallest_trace =
+                            FailedTrace::new(new_trace.clone(), reason.clone());
+                        decreased = true;
+                        break;
                     }
                 }
             }
@@ -754,6 +755,7 @@ impl Engine {
         for ft in new_failed_traces.values() {
             failed_traces.push(ft.clone());
         }
+
         Ok(CampaignResult { failed_traces })
     }
 
