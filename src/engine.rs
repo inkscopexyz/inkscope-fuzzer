@@ -1,10 +1,7 @@
 use crate::{
     config::Config,
     contract_bundle::ContractBundle,
-    fuzzer::{
-        self,
-        Fuzzer,
-    },
+    fuzzer::Fuzzer,
     generator::Generator,
     types::{
         AccountId,
@@ -179,9 +176,6 @@ enum DeployOrMessage {
     Message(Message),
 }
 impl DeployOrMessage {
-    pub fn method_id(&self) -> [u8; 4] {
-        self.data()[0..4].try_into().unwrap()
-    }
     pub fn data(&self) -> &Vec<u8> {
         match self {
             DeployOrMessage::Deploy(deploy) => &deploy.data,
@@ -208,17 +202,6 @@ impl Trace {
     fn hash(&self) -> TraceHash {
         let mut hasher = DefaultHasher::new();
         self.messages.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn hash_extra(&self, extra: Option<&DeployOrMessage>) -> TraceHash {
-        let mut hasher = DefaultHasher::new();
-        for m in &self.messages {
-            m.hash(&mut hasher);
-        }
-        if let Some(m) = extra {
-            m.hash(&mut hasher);
-        }
         hasher.finish()
     }
 
