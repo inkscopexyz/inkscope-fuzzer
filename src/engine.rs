@@ -64,13 +64,26 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
     /// The failing reason (see FailReason)
     pub reason: FailReason,
 }
+
+impl PartialOrd for FailedTrace {
+    fn partial_cmp(&self, other: &Self) -> Option<scale_info::prelude::cmp::Ordering> {
+        if !cmp4(self.failed_data(), other.failed_data()) {
+            return None;
+        }
+        self.trace
+            .messages
+            .len()
+            .partial_cmp(&other.trace.messages.len())
+    }
+}
+
 impl FailedTrace {
     pub fn new(trace: Trace, reason: FailReason) -> Self {
         Self { trace, reason }
@@ -119,7 +132,7 @@ impl MethodInfo {
     }
 }
 
-#[derive(StdHash, Debug, Clone)]
+#[derive(StdHash, Debug, Clone, PartialEq)]
 pub struct Deploy {
     caller: AccountId,
     endowment: Balance,
@@ -162,7 +175,7 @@ impl Deploy {
     }
 }
 
-#[derive(StdHash, Debug, Clone)]
+#[derive(StdHash, Debug, Clone, PartialEq)]
 pub struct Message {
     caller: AccountId,
     callee: AccountId,
@@ -170,7 +183,7 @@ pub struct Message {
     pub input: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
@@ -184,7 +197,7 @@ impl DeployOrMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
     messages: Vec<DeployOrMessage>,
 }
@@ -243,7 +256,7 @@ pub enum TraceResult {
     Reverted,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FailReason {
     /// Last message (or deploy) in the trace trapped
     Trapped,
@@ -668,18 +681,12 @@ impl Engine {
                     &new_trace,
                 )?;
                 for reason in result {
-                    let failing_method_calldata = match &reason {
-                        FailReason::Trapped => new_trace.last_message().unwrap().data(),
-                        FailReason::Property(failed_property_message) => {
-                            &failed_property_message.input
-                        }
+                    let new_failed_trace = FailedTrace {
+                        trace: new_trace.clone(),
+                        reason,
                     };
-
-                    if cmp4(failing_method_calldata, failed_calldata) && smallest_trace.trace.messages.len() > new_trace.messages.len() {
-                        smallest_trace =
-                            FailedTrace::new(new_trace.clone(), reason.clone());
-                        decreased = true;
-                        break;
+                    if new_failed_trace < smallest_trace {
+                        smallest_trace = new_failed_trace;
                     }
                 }
             }
