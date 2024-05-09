@@ -634,6 +634,8 @@ impl Engine {
     ) -> Result<FailedTrace> {
         // Only the deployment in the trace. Can not be optimized by this.
         if failed_trace.trace.messages.len() <= 1 {
+        // Can not optimize a a trace with only one deploy.
+        if failed_trace.trace.messages.len() <= 1{
             return Ok(failed_trace)
         }
 
