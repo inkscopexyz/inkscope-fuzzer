@@ -23,8 +23,7 @@ pub mod testing {
         config: Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
-        let campaign_data = Arc::new(RwLock::new(CampaignData::default()));
-        let campaign_result = engine.run_campaign(&mut Arc::clone(&campaign_data))?;
+        let campaign_result = engine.run_campaign()?;
         // engine.print_campaign_result(&campaign_result);
 
         // Check that the campaign result is as expected
