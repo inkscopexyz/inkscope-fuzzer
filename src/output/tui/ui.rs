@@ -21,7 +21,7 @@ use ratatui::{
         block::{
             Position,
             Title,
-        }, Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap
+        }, Block, BorderType, Borders, Cell, Clear, HighlightSpacing, List, ListItem, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Wrap
     },
     Frame,
 };
@@ -37,7 +37,7 @@ use super::app::App;
 const INFO_TEXT: &str =
     "(Q) quit | (↑) move up | (↓) move down | (→) next color | (←) previous color";
 
-pub fn ui(f: &mut Frame, app: &App) {
+pub fn ui(f: &mut Frame, mut app: &mut App) {
     match app.local_campaign_data.status {
         CampaignStatus::Initializing => {
             render_initializing(f, app);
@@ -61,7 +61,7 @@ fn render_initializing(f: &mut Frame, _app: &App) {
     f.render_widget(main_widget, chunks[0]);
 }
 
-fn render_running(f: &mut Frame, app: &App) {
+fn render_running(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -78,8 +78,10 @@ fn render_running(f: &mut Frame, app: &App) {
     let config_widget = get_config_widget(app);
     f.render_widget(config_widget, chunks[1]);
 
-    let trace_widget = get_trace_widget(app);
-    f.render_widget(trace_widget, chunks[2]);
+    //let trace_widget = get_trace_widget(app);
+    //f.render_widget(trace_widget, chunks[2]);
+
+    render_table(f, app, chunks[2]);
 
     render_footer(f, app, chunks[3]);
 }
@@ -253,6 +255,111 @@ fn get_trace_widget(app: &App) -> Paragraph {
         }
         Paragraph::new(lines).left_aligned().block(trace_block)
     }
+}
+
+fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
+    let header_style = Style::default()
+        .fg(app.colors.header_fg)
+        .bg(app.colors.header_bg);
+    let selected_style = Style::default()
+        .add_modifier(Modifier::REVERSED)
+        .fg(app.colors.selected_style_fg);
+
+    let header = ["Name", "Type", "Status"]
+        .into_iter()
+        .map(Cell::from)
+        .collect::<Row>()
+        .style(header_style)
+        .height(1);
+    let rows = app.local_campaign_data.properties.iter().enumerate().map(|(i, data)| {
+        let color = match i % 2 {
+            0 => app.colors.normal_row_color,
+            _ => app.colors.alt_row_color,
+        };
+        // let item = data.ref_array();
+        // item.into_iter()
+        //     .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+        //     .collect::<Row>()
+        //     .style(Style::new().fg(app.colors.row_fg).bg(color))
+        //     .height(4)
+        //Row::from
+        
+        vec![
+            data,
+            data,
+            data
+        ].into_iter()
+            .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+            .collect::<Row>()
+            .style(Style::new().fg(app.colors.row_fg).bg(color))
+            .height(4)
+        
+        
+    });
+    let bar = " █ ";
+    let t = Table::new(
+        rows,
+        [
+            // + 1 is for padding.
+            // Constraint::Length(app.longest_item_lens.0 + 1),
+            // Constraint::Min(app.longest_item_lens.1 + 1),
+            // Constraint::Min(app.longest_item_lens.2),
+            Constraint::Length(20),
+            Constraint::Min(5),
+            Constraint::Min(5),
+            
+        ],
+    )
+    .header(header)
+    .highlight_style(selected_style)
+    .highlight_symbol(Text::from(vec![
+        "".into(),
+        bar.into(),
+        bar.into(),
+        "".into(),
+    ]))
+    .bg(app.colors.buffer_bg)
+    .highlight_spacing(HighlightSpacing::Always);
+    f.render_stateful_widget(t, area, &mut app.table_state);
+}
+
+// fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16) {
+//     let name_len = items
+//         .iter()
+//         .map(Data::name)
+//         .map(UnicodeWidthStr::width)
+//         .max()
+//         .unwrap_or(0);
+//     let address_len = items
+//         .iter()
+//         .map(Data::address)
+//         .flat_map(str::lines)
+//         .map(UnicodeWidthStr::width)
+//         .max()
+//         .unwrap_or(0);
+//     let email_len = items
+//         .iter()
+//         .map(Data::email)
+//         .map(UnicodeWidthStr::width)
+//         .max()
+//         .unwrap_or(0);
+
+//     #[allow(clippy::cast_possible_truncation)]
+//     (name_len as u16, address_len as u16, email_len as u16)
+// }
+
+fn render_scrollbar(f: &mut Frame, app: &mut App, area: Rect) {
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None),
+        area.inner(&Margin {
+            vertical: 1,
+            horizontal: 1,
+        }),
+        &mut app.scroll_state,
+    );
 }
 
 fn render_footer(f: &mut Frame, app: &App, area: Rect) {
