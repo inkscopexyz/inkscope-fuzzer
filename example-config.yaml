@@ -7,6 +7,7 @@ accounts:
 only_mutable: true
 max_sequence_type_size: 10
 max_number_of_transactions: 50
+max_optimization_rounds: 50
 gas_limit:
   ref_time: 4611686018427387903
   proof_size: 4611686018427387903

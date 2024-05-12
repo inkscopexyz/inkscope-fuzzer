@@ -101,17 +101,52 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
     /// The failing reason (see FailReason)
     pub reason: FailReason,
 }
+
+impl PartialOrd for FailedTrace {
+    fn partial_cmp(&self, other: &Self) -> Option<scale_info::prelude::cmp::Ordering> {
+        if !cmp4(self.failed_data(), other.failed_data()) {
+            return None;
+        }
+        self.trace
+            .messages
+            .len()
+            .partial_cmp(&other.trace.messages.len())
+    }
+}
+
 impl FailedTrace {
     pub fn new(trace: Trace, reason: FailReason) -> Self {
         Self { trace, reason }
     }
+
+    /// Returns the first 4 bytes of the method id that make this trace fail.
+    /// Could be the property that failed or the last message tha trapped
+    pub fn method_id(&self) -> Vec<u8> {
+        self.failed_data().iter().take(4).cloned().collect()
+    }
+
+    /// Return the calldata that made the trace fail (Could be from a message that trapped
+    /// or a property that failed)
+    pub fn failed_data(&self) -> &Vec<u8> {
+        match &self.reason {
+            FailReason::Trapped => self.trace.last_message().unwrap().data(),
+            FailReason::Property(failed_property_message) => {
+                &failed_property_message.input
+            }
+        }
+    }
+}
+
+fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
+    // Verifica si los primeros 4 elementos son iguales
+    vec1.iter().zip(vec2.iter()).take(4).all(|(x, y)| x == y)
 }
 
 // Our own copy of method information. The selector is used as the key in the hashmap
@@ -143,7 +178,7 @@ impl MethodInfo {
     }
 }
 
-#[derive(StdHash, Debug, Clone)]
+#[derive(StdHash, Debug, Clone, PartialEq)]
 pub struct Deploy {
     pub caller: AccountId,
     pub endowment: Balance,
@@ -186,7 +221,7 @@ impl Deploy {
     }
 }
 
-#[derive(StdHash, Debug, Clone)]
+#[derive(StdHash, Debug, Clone, PartialEq)]
 pub struct Message {
     caller: AccountId,
     callee: AccountId,
@@ -194,7 +229,7 @@ pub struct Message {
     pub input: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
@@ -208,9 +243,9 @@ impl DeployOrMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
-    pub messages: Vec<DeployOrMessage>,
+    messages: Vec<DeployOrMessage>,
 }
 
 impl Trace {
@@ -253,19 +288,26 @@ pub enum DeployOrMessageResult {
     Trapped,
     Reverted,
     Success(Vec<u8>),
-    Unhandled(DispatchError),
 }
 
 #[derive(Debug)]
 pub enum TraceResult {
+    /// The trace was succesful. The last message potentially retrurn an output
     Pass(Option<Vec<u8>>),
+
+    /// The trace Failed. See FailReason for the reason
     Failed(FailReason),
+
+    /// The last message of the trace has reverted
     Reverted,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FailReason {
+    /// Last message (or deploy) in the trace trapped
     Trapped,
+
+    /// Message property does not hold in the trace
     Property(Message),
 }
 
@@ -280,7 +322,11 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
                     {
                         DeployOrMessageResult::Trapped
                     }
-                    _ => DeployOrMessageResult::Unhandled(e),
+                    _ => {
+                        // If the error is not a ContractTrapped, we panic because
+                        // is not an expected behavior
+                        panic!("Unhandled dispatch error Error: {:?}", e);
+                    }
                 }
             }
             // Return if execution reverted in constructor
@@ -343,6 +389,7 @@ impl<T> Engine<T>
 where
     T: OutputTrait,
 {
+
     // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
@@ -621,7 +668,7 @@ where
             // If the property has arguments, fuzz them
             for _round in 0..max_rounds {
                 let property_message =
-                    self.generate_message(fuzzer, property, &contract_address)?;
+                    self.generate_message(fuzzer, property, contract_address)?;
 
                 let result = self.execute_message(sandbox, &property_message);
 
@@ -630,11 +677,6 @@ where
                 sandbox.restore_snapshot(checkpoint.clone());
 
                 match result {
-                    DeployOrMessageResult::Unhandled(e) => {
-                        // If the error is not a ContractTrapped, we panic because
-                        // is not an expected behavior
-                        panic!("Error: {:?}", e);
-                    }
                     DeployOrMessageResult::Trapped | DeployOrMessageResult::Reverted => {
                         // If the property reverts or panics, we also consider it failed
                         failed_properties.push(property_message);
@@ -655,23 +697,62 @@ where
         Ok(failed_properties)
     }
 
-    pub fn optimize(&self, fuzzer: &mut Fuzzer, result: FailedTrace) -> FailedTrace {
-        let new_trace = Trace::new();
-        let remove_idx = fuzzer.rng.usize(1..result.trace.messages.len());
-        let mut sandbox = DefaultSandbox::default();
-
-        for (pos, deploy_or_message) in result.trace.messages.iter().enumerate() {
-            if pos != remove_idx {
-                // new_trace.push(deploy_or_message.clone());
-                // let result =
-                // self.execute_deploy_or_message_and_check_properties(sandbox,
-                // deploy_or_message); match result {
-
-                // }
-                todo!()
-            }
+    pub fn optimize(
+        &self,
+        fuzzer: &mut Fuzzer,
+        failed_trace: FailedTrace,
+    ) -> Result<FailedTrace> {
+        // Only the deployment in the trace. Can not be optimized by this.
+        if failed_trace.trace.messages.len() <= 1 {
+            return Ok(failed_trace)
         }
-        todo!()
+
+        let mut smallest_trace = failed_trace;
+        let mut local_snapshot_cache = SnapshotCache::new();
+        let mut no_decreased_count = 0usize;
+        while no_decreased_count < self.config.max_optimization_rounds {
+            // Always keep tyhe first message  deployment
+            let remove_idx = fuzzer.rng.usize(1..smallest_trace.trace.messages.len());
+
+            let mut sandbox = DefaultSandbox::default();
+            let mut current_snapshot =
+                self.init(&mut sandbox, &mut local_snapshot_cache)?;
+
+            let mut new_trace = Trace::new();
+            for (pos, deploy_or_message) in smallest_trace
+                .trace
+                .messages
+                .clone()
+                .into_iter()
+                .enumerate()
+            {
+                // Executo all messages but the one selected for deletion
+                if pos == remove_idx {
+                    continue
+                }
+                new_trace.messages.push(deploy_or_message);
+                let result = self.execute_last(
+                    fuzzer,
+                    &mut sandbox,
+                    &mut local_snapshot_cache,
+                    &mut current_snapshot,
+                    &new_trace,
+                )?;
+
+                for reason in result {
+                    let new_failed_trace = FailedTrace {
+                        trace: new_trace.clone(),
+                        reason,
+                    };
+                    if new_failed_trace < smallest_trace {
+                        smallest_trace = new_failed_trace;
+                        no_decreased_count = 0;
+                    }
+                }
+            }
+            no_decreased_count += 1;
+        }
+        Ok(smallest_trace)
     }
 
     pub fn run_campaign(
@@ -718,9 +799,34 @@ where
             self.snapshot_cache.extend(local_snapshot_cache);
         }
 
+        let mut new_failed_traces = HashMap::new();
+        for ft in failed_traces {
+            let ft = self.optimize(&mut fuzzer, ft)?;
+            // let mut key: Vec<u8> = ft.failed_data().iter().take(4).cloned().collect();
+            // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
+            //     key.push(*c);
+            // };
+            // let t: Vec<u8> =
+            let key = ft.method_id();
+            match new_failed_traces.get(&key) {
+                None => {
+                    new_failed_traces.insert(key, ft.clone());
+                }
+                Some(val) => {
+                    if val.trace.messages.len() > ft.trace.messages.len() {
+                        // smallest trace!
+                        new_failed_traces.insert(key, ft.clone());
+                    }
+                }
+            }
+        }
+
         self.output.end_campaign();
         println!("Elapsed time: {:?}", start_time.elapsed());
-        Ok(CampaignResult { failed_traces })
+
+        Ok(CampaignResult {
+            failed_traces: new_failed_traces.values().cloned().collect(),
+        })
     }
 
     fn init<'a>(
@@ -757,8 +863,8 @@ where
         local_snapshot_cache: &mut SnapshotCache,
         current_snapshot: &mut Option<&'a Snapshot>,
         trace: &Trace,
-    ) -> Result<Vec<FailedTrace>> {
-        let mut failed_traces = vec![];
+    ) -> Result<Vec<FailReason>> {
+        let mut fails = vec![];
 
         // CACHE: Check we happened to choose the same constructor as a previous run
         match self.snapshot_cache.get(&trace.hash()) {
@@ -769,10 +875,7 @@ where
                         // The trace was already in the cache set current pending state
                         *current_snapshot = Some(&cache_entry.snapshot);
                     }
-                    TraceResult::Failed(reason) => {
-                        failed_traces
-                            .push(FailedTrace::new(trace.clone(), reason.clone()))
-                    }
+                    TraceResult::Failed(reason) => fails.push(reason.clone()),
                     TraceResult::Reverted => {
                         // If the message reverts we just ignore this execution and
                         // continue
@@ -798,11 +901,7 @@ where
                 };
 
                 match message_or_deploy_result {
-                    DeployOrMessageResult::Unhandled(e) => {
-                        // If the error is not a ContractTrapped, we panic because
-                        // is not an expected behavior
-                        panic!("Error: {:?}", e);
-                    }
+
                     DeployOrMessageResult::Trapped => {
                         local_snapshot_cache.insert(
                             trace.hash(),
@@ -811,10 +910,7 @@ where
                                 TraceResult::Failed(FailReason::Trapped),
                             ),
                         );
-                        failed_traces.push(FailedTrace {
-                            trace: trace.clone(),
-                            reason: FailReason::Trapped,
-                        });
+                        fails.push(FailReason::Trapped);
                     }
                     DeployOrMessageResult::Reverted => {
                         // Note: the snapshot here is probably never used as the last tx
@@ -831,7 +927,7 @@ where
                     DeployOrMessageResult::Success(output) => {
                         // If it did not revert or panic we check the properties
                         let failed_properties =
-                            self.check_properties(fuzzer, sandbox, &trace)?;
+                            self.check_properties(fuzzer, sandbox, trace)?;
                         if !failed_properties.is_empty() {
                             for failed_property in &failed_properties {
                                 debug!("Property check failed: {:?}", failed_property);
@@ -845,12 +941,9 @@ where
                                     ),
                                 );
 
-                                failed_traces.push(FailedTrace {
-                                    trace: trace.clone(),
-                                    reason: FailReason::Property(
-                                        failed_property.to_owned(),
-                                    ),
-                                });
+                                fails.push(FailReason::Property(
+                                    failed_property.to_owned(),
+                                ));
                             }
                         } else {
                             // If the execution went ok then store the new state in the
@@ -867,7 +960,7 @@ where
                 }
             }
         };
-        Ok(failed_traces)
+        Ok(fails)
     }
 
     fn run(
@@ -893,13 +986,17 @@ where
         let mut trace = Trace::new();
         trace.push(DeployOrMessage::Deploy(constructor));
 
-        let mut failed_traces = self.execute_last(
-            fuzzer,
-            &mut sandbox,
-            local_snapshot_cache,
-            &mut current_snapshot,
-            &trace,
-        )?;
+        let mut failed_traces: Vec<FailedTrace> = self
+            .execute_last(
+                fuzzer,
+                &mut sandbox,
+                local_snapshot_cache,
+                &mut current_snapshot,
+                &trace,
+            )?
+            .iter()
+            .map(|reason| FailedTrace::new(trace.clone(), reason.to_owned()))
+            .collect();
 
         // If the deployment failed, we return the failed trace. We do not continue
         if !failed_traces.is_empty() {
@@ -916,13 +1013,15 @@ where
 
             trace.push(DeployOrMessage::Message(message));
 
-            failed_traces.extend(self.execute_last(
+            for reason in self.execute_last(
                 fuzzer,
                 &mut sandbox,
                 local_snapshot_cache,
                 &mut current_snapshot,
                 &trace,
-            )?);
+            )? {
+                failed_traces.push(FailedTrace::new(trace.clone(), reason));
+            }
         }
         Ok(failed_traces)
     }

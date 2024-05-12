@@ -62,20 +62,4 @@ impl ContractBundle {
             transcoder,
         })
     }
-
-    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .transcoder
-            .decode_contract_message(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .transcoder
-            .decode_contract_constructor(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
-        Ok(decoded)
-    }
 }
