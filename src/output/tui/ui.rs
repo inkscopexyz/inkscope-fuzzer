@@ -21,14 +21,7 @@ use ratatui::{
         block::{
             Position,
             Title,
-        },
-        Block,
-        Borders,
-        Clear,
-        List,
-        ListItem,
-        Paragraph,
-        Wrap,
+        }, Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap
     },
     Frame,
 };
@@ -40,6 +33,9 @@ use crate::engine::{
 };
 
 use super::app::App;
+
+const INFO_TEXT: &str =
+    "(Q) quit | (↑) move up | (↓) move down | (→) next color | (←) previous color";
 
 pub fn ui(f: &mut Frame, app: &App) {
     match app.local_campaign_data.status {
@@ -72,6 +68,7 @@ fn render_running(f: &mut Frame, app: &App) {
             Constraint::Length(5),
             Constraint::Length(6),
             Constraint::Min(5),
+            Constraint::Length(3),
         ])
         .split(f.size());
 
@@ -83,6 +80,8 @@ fn render_running(f: &mut Frame, app: &App) {
 
     let trace_widget = get_trace_widget(app);
     f.render_widget(trace_widget, chunks[2]);
+
+    render_footer(f, app, chunks[3]);
 }
 
 fn render_finished(f: &mut Frame, app: &App) {
@@ -254,6 +253,18 @@ fn get_trace_widget(app: &App) -> Paragraph {
         }
         Paragraph::new(lines).left_aligned().block(trace_block)
     }
+}
+
+fn render_footer(f: &mut Frame, app: &App, area: Rect) {
+    let info_footer = Paragraph::new(Line::from(INFO_TEXT))
+        .style(Style::new().fg(app.colors.row_fg).bg(app.colors.buffer_bg))
+        .centered()
+        .block(
+            Block::bordered()
+                .border_type(BorderType::Double)
+                .border_style(Style::new().fg(app.colors.footer_border_color)),
+        );
+    f.render_widget(info_footer, area);
 }
 
 fn value_to_string(value: &Value) -> String {

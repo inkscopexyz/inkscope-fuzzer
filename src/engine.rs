@@ -821,7 +821,7 @@ where
             }
         }
 
-        self.output.end_campaign();
+        self.output.end_campaign()?;
         println!("Elapsed time: {:?}", start_time.elapsed());
 
         Ok(CampaignResult {

@@ -56,10 +56,45 @@ use ratatui::{
 
 use super::ui::ui;
 
+use style::palette::tailwind;
+
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
+//const COLOR_PALETTE: tailwind::Palette = tailwind::BLUE;
+
+pub struct AppColors {
+    pub buffer_bg: Color,
+    pub header_bg: Color,
+    pub header_fg: Color,
+    pub row_fg: Color,
+    pub selected_style_fg: Color,
+    pub normal_row_color: Color,
+    pub alt_row_color: Color,
+    pub footer_border_color: Color,
+}
+
+impl AppColors {
+    const fn new(color: &tailwind::Palette) -> Self {
+        Self {
+            buffer_bg: tailwind::SLATE.c950,
+            header_bg: color.c900,
+            header_fg: tailwind::SLATE.c200,
+            row_fg: tailwind::SLATE.c200,
+            selected_style_fg: color.c400,
+            normal_row_color: tailwind::SLATE.c950,
+            alt_row_color: tailwind::SLATE.c900,
+            footer_border_color: color.c400,
+        }
+    }
+}
+
+const ITEM_HEIGHT: usize = 4;
+
 pub struct App {
+    pub table_state: TableState,
+    pub scroll_state: ScrollbarState,
+    pub colors: AppColors,
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
     pub local_campaign_data: CampaignData,
@@ -72,6 +107,9 @@ impl App {
     ) -> Self {
         let local_campaign_data = campaign_data.read().unwrap().clone();
         Self {
+            table_state: TableState::default().with_selected(0),
+            scroll_state: ScrollbarState::new((local_campaign_data.properties.len() - 1) * ITEM_HEIGHT),
+            colors: AppColors::new(&tailwind::BLUE),
             campaign_data,
             contract,
             local_campaign_data,
