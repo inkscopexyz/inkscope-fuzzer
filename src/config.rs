@@ -22,6 +22,9 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Config {
+    /// The initial random seed
+    pub seed: u64,
+
     // Exits as soon as a failed property is found
     pub fail_fast: bool,
 
@@ -42,6 +45,9 @@ pub struct Config {
 
     // Max number of transactions that can be generated in a given run
     pub max_number_of_transactions: usize,
+
+    // Max attempts to try optimize (reduce) a failed trace. 
+    pub max_optimization_rounds: usize,
 
     // Max gas limit for a transaction
     pub gas_limit: Weight,
@@ -75,6 +81,7 @@ impl Default for Config {
         // ];
 
         Self {
+            seed: 0,
             fail_fast: true,
             max_rounds: 1000,
             budget: 1000000000000,
@@ -82,6 +89,7 @@ impl Default for Config {
             only_mutable: true,
             max_sequence_type_size: 10,
             max_number_of_transactions: 50,
+            max_optimization_rounds: 50,
             gas_limit: Weight::max_value(),
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,

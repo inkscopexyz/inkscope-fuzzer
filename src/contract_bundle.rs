@@ -1,7 +1,10 @@
 //! This module provides simple utilities for loading and parsing `.contract` files in
 //! context of `drink` tests.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+};
 
 use contract_metadata::ContractMetadata;
 use contract_transcode::ContractMessageTranscoder;
@@ -28,8 +31,7 @@ pub struct ContractBundle {
 impl ContractBundle {
     /// Load and parse the information in a `.contract` bundle under `path`, producing a
     /// `ContractBundle` struct.
-    pub fn load(path: PathBuf) -> Result<Self>
-    {
+    pub fn load(path: PathBuf) -> Result<Self> {
         let metadata: ContractMetadata = ContractMetadata::load(&path).map_err(|e| {
             anyhow::format_err!("Failed to load the contract file:\n{e:?}")
         })?;
@@ -51,6 +53,10 @@ impl ContractBundle {
             ))?
             .0;
 
-        Ok(Self { path, wasm, transcoder })
+        Ok(Self {
+            path,
+            wasm,
+            transcoder,
+        })
     }
 }

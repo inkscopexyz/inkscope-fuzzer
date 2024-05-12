@@ -1,7 +1,6 @@
 use crate::constants::Constants;
 use fastrand::Rng;
 
-#[derive(Clone)]
 pub struct Fuzzer {
     pub rng: Rng,
     pub constants: Constants,
@@ -13,6 +12,11 @@ impl Fuzzer {
             rng: Rng::with_seed(rng_seed),
             constants,
         }
+    }
+
+    pub fn fork(&mut self) -> Self {
+        let rng_seed = self.rng.u64(..);
+        self.with_seed(rng_seed)
     }
 
     #[allow(dead_code)]
