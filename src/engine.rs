@@ -245,7 +245,7 @@ impl DeployOrMessage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
-    messages: Vec<DeployOrMessage>,
+    pub messages: Vec<DeployOrMessage>,
 }
 
 impl Trace {
