@@ -144,6 +144,8 @@ impl App {
         match key_event.code {
             // TODO: Add more key bindings here if needed. Handle unwrap
             KeyCode::Char('q') => self.exit().unwrap(),
+            KeyCode::Down => self.next(),
+            KeyCode::Up => self.previous(),
             _ => {}
         }
     }
@@ -165,5 +167,35 @@ impl App {
         execute!(stdout(), LeaveAlternateScreen)?;
         disable_raw_mode()?;
         Ok(())
+    }
+
+    pub fn next(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i >= self.local_campaign_data.properties.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.table_state.select(Some(i));
+        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+    }
+
+    pub fn previous(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.local_campaign_data.properties.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.table_state.select(Some(i));
+        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
     }
 }

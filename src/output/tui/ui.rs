@@ -83,6 +83,8 @@ fn render_running(f: &mut Frame, app: &mut App) {
 
     render_table(f, app, chunks[2]);
 
+    render_scrollbar(f, app, chunks[2]);
+
     render_footer(f, app, chunks[3]);
 }
 
@@ -286,8 +288,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         
         vec![
             data,
-            data,
-            data
+            &String::from("Property"),
+            &String::from("Checking...")
         ].into_iter()
             .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
             .collect::<Row>()
