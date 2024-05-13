@@ -778,7 +778,8 @@ where
 
         let start_time = std::time::Instant::now();
 
-        let mut failed_traces: Vec<FailedTrace> = vec![];
+        //let mut failed_traces: Vec<FailedTrace> = vec![];
+        let mut failed_traces: HashMap<[u8;4],FailedTrace> = HashMap::new();
         let mut fuzzer = Fuzzer::new(rng_seed, self.config.constants.clone());
 
         for _ in 0..max_iterations {
@@ -787,7 +788,19 @@ where
             let new_failed_traces =
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
 
-            failed_traces.extend(new_failed_traces);
+            for new_ft in new_failed_traces {
+                let key = new_ft.method_id().try_into().map_err(|_| anyhow!("Failed to convert method_id to [u8;4]"))?;
+                match failed_traces.get(&key) {
+                    None => {
+                        failed_traces.insert(key, new_ft.clone());
+                    }
+                    Some(old_ft) => {
+                        if new_ft < *old_ft {
+                            failed_traces.insert(key, new_ft.clone());
+                        }
+                    }
+                }
+            }
 
             // TODO: Only update the campaign data if new failed traces are found.
             // TODO: Maybe send a message to worker thread to make checks and perform
@@ -804,7 +817,7 @@ where
 
         let mut new_failed_traces = HashMap::new();
         for ft in failed_traces {
-            let ft = self.optimize(&mut fuzzer, ft)?;
+            let ft = self.optimize(&mut fuzzer, ft.1)?;
             // let mut key: Vec<u8> = ft.failed_data().iter().take(4).cloned().collect();
             // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
             //     key.push(*c);

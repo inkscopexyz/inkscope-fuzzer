@@ -2,63 +2,51 @@ use contract_transcode::Value;
 
 use crate::{
     contract_bundle::ContractBundle,
-    engine::{
-        CampaignStatus,
-        DeployOrMessage,
-        FailReason,
-        FailedTrace, MethodInfo,
-    },
+    engine::{CampaignStatus, DeployOrMessage, FailReason, FailedTrace, MethodInfo},
 };
 use std::{
-    io::{
-        self,
-        Write,
-    },
-    sync::{
-        atomic::AtomicU64,
-        Arc,
-        RwLock,
-    },
-    thread::{
-        self,
-        JoinHandle,
-    },
+    collections::HashMap,
+    io::{self, Write},
+    sync::{atomic::AtomicU64, Arc, RwLock},
+    thread::{self, JoinHandle},
 };
 
 use crate::engine::CampaignData;
 
-use super::tui::{
-    self,
-    app::App,
-};
+use super::tui::{self, app::App};
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;
-    fn start_campaign(&mut self, seed: u64, properties: Vec<([u8;4],MethodInfo)>, max_iterations: u64);
+    fn start_campaign(
+        &mut self,
+        seed: u64,
+        properties: Vec<([u8; 4], MethodInfo)>,
+        max_iterations: u64,
+    );
     fn end_campaign(&mut self) -> io::Result<()>;
     fn exit(&self) -> bool;
     fn update_status(&mut self, campaign_status: CampaignStatus);
-    fn update_failed_traces(&mut self, failed_traces: Vec<FailedTrace>);
+    fn update_failed_traces(&mut self, failed_traces: HashMap<[u8; 4], FailedTrace>);
     fn incr_iteration(&mut self);
 }
 
 pub struct ConsoleOutput {
     pub contract: ContractBundle,
-    pub failed_traces: Vec<FailedTrace>,
+    pub failed_traces: HashMap<[u8; 4], FailedTrace>,
     pub current_iteration: u64,
 }
 impl OutputTrait for ConsoleOutput {
     fn new(contract: ContractBundle) -> Self {
         Self {
             contract,
-            failed_traces: Vec::new(),
+            failed_traces: HashMap::new(),
             current_iteration: 0,
         }
     }
     fn start_campaign(
         &mut self,
         seed: u64,
-        properties: Vec<([u8;4], MethodInfo)>,
+        properties: Vec<([u8; 4], MethodInfo)>,
         max_iterations: u64,
     ) {
         println!("Starting campaign...");
@@ -81,13 +69,17 @@ impl OutputTrait for ConsoleOutput {
     fn update_status(&mut self, campaign_status: CampaignStatus) {
         println!("Campaign status: {:?}", campaign_status);
     }
-    fn update_failed_traces(&mut self, failed_traces: Vec<FailedTrace>) {
-        if self.failed_traces.len() < failed_traces.len() {
-            self.failed_traces.extend(failed_traces);
+    fn update_failed_traces(&mut self, failed_traces: HashMap<[u8; 4], FailedTrace>) {
+        for (key, new_failed_trace) in failed_traces.iter() {
+            let old_failed_trace = self.failed_traces.get(key);
+            match old_failed_trace {
+                Some(old_failed_trace) if new_failed_trace >= old_failed_trace => {
+                    continue
+                }
+                _ => {}
+            }
 
-            let failed_trace = self.failed_traces.last().unwrap();
-
-            match &failed_trace.reason {
+            match &new_failed_trace.reason {
                 FailReason::Trapped => {
                     println!(
                         "\nLast message in trace has Trapped or assertion has failed ❌"
@@ -99,7 +91,7 @@ impl OutputTrait for ConsoleOutput {
             }
 
             // Messages
-            for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
+            for (idx, deploy_or_message) in new_failed_trace.trace.messages.iter().enumerate()
             {
                 print!("  Message{}: ", idx);
                 let decode_result = match deploy_or_message {
@@ -121,7 +113,7 @@ impl OutputTrait for ConsoleOutput {
                 }
             }
 
-            match &failed_trace.reason {
+            match &new_failed_trace.reason {
                 FailReason::Trapped => println!("Last message in trace has Trapped"),
                 FailReason::Property(failed_property) => {
                     // Failed properties
@@ -168,10 +160,9 @@ impl OutputTrait for TuiOutput {
     fn start_campaign(
         &mut self,
         seed: u64,
-        properties_or_messages: Vec<([u8;4],MethodInfo)>,
+        properties_or_messages: Vec<([u8; 4], MethodInfo)>,
         max_iterations: u64,
     ) {
-
         {
             let mut shared_campaign_data = self.campaign_data.write().unwrap();
             shared_campaign_data.seed = seed;
@@ -206,9 +197,8 @@ impl OutputTrait for TuiOutput {
     fn update_status(&mut self, campaign_status: CampaignStatus) {
         self.campaign_data.write().unwrap().status = campaign_status;
     }
-    fn update_failed_traces(&mut self, failed_traces: Vec<FailedTrace>) {
-        //TODO: Do this
-        //self.campaign_data.write().unwrap().failed_traces = failed_traces;
+    fn update_failed_traces(&mut self, failed_traces: HashMap<[u8; 4], FailedTrace>) {
+        self.campaign_data.write().unwrap().failed_traces = failed_traces;
     }
     fn incr_iteration(&mut self) {
         // if self
