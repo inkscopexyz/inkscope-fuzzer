@@ -61,7 +61,7 @@ use style::palette::tailwind;
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
-//const COLOR_PALETTE: tailwind::Palette = tailwind::BLUE;
+// const COLOR_PALETTE: tailwind::Palette = tailwind::BLUE;
 
 pub struct AppColors {
     pub buffer_bg: Color,
@@ -93,7 +93,9 @@ const ITEM_HEIGHT: usize = 4;
 
 pub struct App {
     pub table_state: TableState,
-    pub scroll_state: ScrollbarState,
+    pub table_scroll_state: ScrollbarState,
+    pub show_popup: bool,
+    pub popup_scroll_state: ScrollbarState,
     pub colors: AppColors,
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
@@ -108,7 +110,11 @@ impl App {
         let local_campaign_data = campaign_data.read().unwrap().clone();
         Self {
             table_state: TableState::default().with_selected(0),
-            scroll_state: ScrollbarState::new((local_campaign_data.properties.len() - 1) * ITEM_HEIGHT),
+            table_scroll_state: ScrollbarState::new(
+                (local_campaign_data.properties.len() - 1) * ITEM_HEIGHT,
+            ),
+            show_popup: false,
+            popup_scroll_state: ScrollbarState::new(0),
             colors: AppColors::new(&tailwind::BLUE),
             campaign_data,
             contract,
@@ -146,6 +152,7 @@ impl App {
             KeyCode::Char('q') => self.exit().unwrap(),
             KeyCode::Down => self.next(),
             KeyCode::Up => self.previous(),
+            KeyCode::Enter => self.toggle_popup(),
             _ => {}
         }
     }
@@ -170,32 +177,44 @@ impl App {
     }
 
     pub fn next(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i >= self.local_campaign_data.properties.len() - 1 {
-                    0
-                } else {
-                    i + 1
+        if self.show_popup {
+            self.popup_scroll_state.next();
+        } else {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i >= self.local_campaign_data.properties.len() - 1 {
+                        0
+                    } else {
+                        i + 1
+                    }
                 }
-            }
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+                None => 0,
+            };
+            self.table_state.select(Some(i));
+            self.table_scroll_state = self.table_scroll_state.position(i * ITEM_HEIGHT);
+        }
     }
 
     pub fn previous(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.local_campaign_data.properties.len() - 1
-                } else {
-                    i - 1
+        if self.show_popup {
+            self.popup_scroll_state.prev();
+        } else {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i == 0 {
+                        self.local_campaign_data.properties.len() - 1
+                    } else {
+                        i - 1
+                    }
                 }
-            }
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+                None => 0,
+            };
+            self.table_state.select(Some(i));
+            self.table_scroll_state = self.table_scroll_state.position(i * ITEM_HEIGHT);
+        }
+    }
+
+    pub fn toggle_popup(&mut self) {
+        self.show_popup = !self.show_popup;
     }
 }

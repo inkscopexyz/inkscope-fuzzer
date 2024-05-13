@@ -389,7 +389,6 @@ impl<T> Engine<T>
 where
     T: OutputTrait,
 {
-
     // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
@@ -755,9 +754,7 @@ where
         Ok(smallest_trace)
     }
 
-    pub fn run_campaign(
-        &mut self,
-    ) -> Result<CampaignResult> {
+    pub fn run_campaign(&mut self) -> Result<CampaignResult> {
         // Set the init config in the output
         self.output.start_campaign(
             self.config.seed,
@@ -901,7 +898,6 @@ where
                 };
 
                 match message_or_deploy_result {
-
                     DeployOrMessageResult::Trapped => {
                         local_snapshot_cache.insert(
                             trace.hash(),

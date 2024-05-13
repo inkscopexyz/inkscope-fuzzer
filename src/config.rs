@@ -46,7 +46,7 @@ pub struct Config {
     // Max number of transactions that can be generated in a given run
     pub max_number_of_transactions: usize,
 
-    // Max attempts to try optimize (reduce) a failed trace. 
+    // Max attempts to try optimize (reduce) a failed trace.
     pub max_optimization_rounds: usize,
 
     // Max gas limit for a transaction
