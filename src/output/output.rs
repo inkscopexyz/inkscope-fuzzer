@@ -6,7 +6,7 @@ use crate::{
         CampaignStatus,
         DeployOrMessage,
         FailReason,
-        FailedTrace,
+        FailedTrace, MethodInfo,
     },
 };
 use std::{
@@ -34,7 +34,7 @@ use super::tui::{
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;
-    fn start_campaign(&mut self, seed: u64, properties: Vec<String>, max_iterations: u64);
+    fn start_campaign(&mut self, seed: u64, properties: Vec<([u8;4],MethodInfo)>, max_iterations: u64);
     fn end_campaign(&mut self) -> io::Result<()>;
     fn exit(&self) -> bool;
     fn update_status(&mut self, campaign_status: CampaignStatus);
@@ -58,7 +58,7 @@ impl OutputTrait for ConsoleOutput {
     fn start_campaign(
         &mut self,
         seed: u64,
-        properties: Vec<String>,
+        properties: Vec<([u8;4], MethodInfo)>,
         max_iterations: u64,
     ) {
         println!("Starting campaign...");
@@ -168,13 +168,16 @@ impl OutputTrait for TuiOutput {
     fn start_campaign(
         &mut self,
         seed: u64,
-        properties: Vec<String>,
+        properties_or_messages: Vec<([u8;4],MethodInfo)>,
         max_iterations: u64,
     ) {
-        self.campaign_data.write().unwrap().seed = seed;
-        self.campaign_data.write().unwrap().properties = properties;
-        // self.campaign_data.write().unwrap().max_iterations = max_iterations;
-        self.campaign_data.write().unwrap().status = CampaignStatus::InProgress;
+
+        {
+            let mut shared_campaign_data = self.campaign_data.write().unwrap();
+            shared_campaign_data.seed = seed;
+            shared_campaign_data.properties_or_messages = properties_or_messages;
+            shared_campaign_data.status = CampaignStatus::InProgress;
+        }
         let campaign_data = Arc::clone(&self.campaign_data);
         let contract = self.contract.clone();
         let tui_thread = thread::spawn(move || {
@@ -204,7 +207,8 @@ impl OutputTrait for TuiOutput {
         self.campaign_data.write().unwrap().status = campaign_status;
     }
     fn update_failed_traces(&mut self, failed_traces: Vec<FailedTrace>) {
-        self.campaign_data.write().unwrap().failed_traces = failed_traces;
+        //TODO: Do this
+        //self.campaign_data.write().unwrap().failed_traces = failed_traces;
     }
     fn incr_iteration(&mut self) {
         // if self

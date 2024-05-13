@@ -81,17 +81,17 @@ pub enum CampaignStatus {
 
 #[derive(Debug, Clone)]
 pub struct CampaignData {
-    pub properties: Vec<String>,
+    pub properties_or_messages: Vec<([u8;4],MethodInfo)>,
+    pub failed_traces: HashMap<[u8;4],FailedTrace>,
     pub seed: u64,
-    pub failed_traces: Vec<FailedTrace>,
     pub status: CampaignStatus,
 }
 impl Default for CampaignData {
     fn default() -> Self {
         Self {
-            properties: vec![],
+            properties_or_messages: vec![],
+            failed_traces: HashMap::new(),
             seed: 0,
-            failed_traces: vec![],
             status: CampaignStatus::Initializing,
         }
     }
@@ -150,14 +150,16 @@ fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
 }
 
 // Our own copy of method information. The selector is used as the key in the hashmap
-struct MethodInfo {
-    method_name: String,
-    arguments: Vec<TypeDef<PortableForm>>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodInfo {
+    pub method_name: String,
+    pub arguments: Vec<TypeDef<PortableForm>>,
     #[allow(dead_code)]
-    mutates: bool,
-    payable: bool,
+    pub mutates: bool,
+    pub payable: bool,
     #[allow(dead_code)]
-    constructor: bool,
+    pub constructor: bool,
+    pub property: bool,
 }
 
 impl MethodInfo {
@@ -167,6 +169,7 @@ impl MethodInfo {
         mutates: bool,
         payable: bool,
         constructor: bool,
+        property: bool,
     ) -> Self {
         Self {
             method_name,
@@ -174,6 +177,7 @@ impl MethodInfo {
             mutates,
             payable,
             constructor,
+            property
         }
     }
 }
@@ -431,6 +435,7 @@ where
                 true,
                 spec.payable,
                 true,
+                false // Constructors cannot be properties
             );
             self.method_info.insert(selector, method_info);
             self.constructors.insert(selector);
@@ -455,6 +460,7 @@ where
                 spec.mutates(),
                 spec.payable(),
                 false,
+                self.is_property(spec.label()),
             );
             self.method_info.insert(selector, method_info);
             if self.is_property(spec.label()) {
@@ -760,8 +766,8 @@ where
             self.config.seed,
             self.method_info
                 .iter()
-                .filter(|(selector, _)| self.properties.contains(selector.clone()))
-                .map(|(_selector, method_info)| method_info.method_name.clone())
+                .filter(|(selector, method_info)| self.properties.contains(selector.clone()) || (method_info.mutates && !method_info.constructor))
+                .map(|(selector, method_info)| (selector.clone(),method_info.clone()))
                 .collect(),
             self.config.max_rounds,
         );
@@ -1068,7 +1074,7 @@ mod tests {
     fn test_method_info() {
         let arguments = vec![];
         let method_info =
-            MethodInfo::new(String::from("Name"), arguments, true, true, false);
+            MethodInfo::new(String::from("Name"), arguments, true, true, false, false);
         assert!(method_info.mutates);
         assert!(method_info.payable);
         assert!(!method_info.constructor);

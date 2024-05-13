@@ -89,7 +89,7 @@ impl AppColors {
     }
 }
 
-const ITEM_HEIGHT: usize = 4;
+pub const ITEM_HEIGHT: usize = 1;
 
 pub struct App {
     pub table_state: TableState,
@@ -111,7 +111,7 @@ impl App {
         Self {
             table_state: TableState::default().with_selected(0),
             table_scroll_state: ScrollbarState::new(
-                (local_campaign_data.properties.len() - 1) * ITEM_HEIGHT,
+                (local_campaign_data.properties_or_messages.len() - 1) * ITEM_HEIGHT,
             ),
             show_popup: false,
             popup_scroll_state: ScrollbarState::new(0),
@@ -182,7 +182,7 @@ impl App {
         } else {
             let i = match self.table_state.selected() {
                 Some(i) => {
-                    if i >= self.local_campaign_data.properties.len() - 1 {
+                    if i >= self.local_campaign_data.properties_or_messages.len() - 1 {
                         0
                     } else {
                         i + 1
@@ -202,7 +202,7 @@ impl App {
             let i = match self.table_state.selected() {
                 Some(i) => {
                     if i == 0 {
-                        self.local_campaign_data.properties.len() - 1
+                        self.local_campaign_data.properties_or_messages.len() - 1
                     } else {
                         i - 1
                     }

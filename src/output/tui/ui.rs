@@ -46,10 +46,14 @@ use crate::engine::{
     FailReason,
 };
 
-use super::app::App;
+use super::app::{App, ITEM_HEIGHT};
 
-const INFO_TEXT: &str =
-    "(Q) quit | (↑) move up | (↓) move down | (→) next color | (←) previous color";
+const INFO_TEXT_OPEN_MODAL: &str =
+    "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Open Failed Trace";
+
+const INFO_TEXT_CLOSE_MODAL: &str =
+    "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Close Failed Trace";
+
 
 pub fn ui(f: &mut Frame, mut app: &mut App) {
     match app.local_campaign_data.status {
@@ -105,8 +109,8 @@ fn render_finished(f: &mut Frame, app: &App) {
 
     render_main_widget(f, app, chunks[0], "Finished");
 
-    let trace_widget = get_trace_widget(app);
-    f.render_widget(trace_widget, chunks[1]);
+    // let trace_widget = get_trace_widget(app);
+    // f.render_widget(trace_widget, chunks[1]);
 }
 
 fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
@@ -130,18 +134,12 @@ fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     let n_properties_line = Line::from(vec![
         "Properties found: ".into(),
         app.local_campaign_data
-            .properties
+            .properties_or_messages
             .len()
             .to_string()
             .yellow(),
     ]);
     lines.push(n_properties_line);
-
-    let properties_line = Line::from(vec![
-        "Properties: ".into(),
-        app.local_campaign_data.properties.join(", ").yellow(),
-    ]);
-    lines.push(properties_line);
 
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text)
@@ -151,94 +149,94 @@ fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     f.render_widget(paragraph, area);
 }
 
-fn get_trace_widget(app: &App) -> Paragraph {
-    let title = Title::from(" Failed Traces ");
-    let trace_block = Block::default()
-        .title(title.alignment(Alignment::Left))
-        .borders(Borders::ALL)
-        .border_set(border::PLAIN)
-        .style(Style::default());
+// fn get_trace_widget(app: &App) -> Paragraph {
+//     let title = Title::from(" Failed Traces ");
+//     let trace_block = Block::default()
+//         .title(title.alignment(Alignment::Left))
+//         .borders(Borders::ALL)
+//         .border_set(border::PLAIN)
+//         .style(Style::default());
 
-    if app.local_campaign_data.failed_traces.is_empty() {
-        let text = Text::from(vec![Line::from("No failed traces found")]);
-        return Paragraph::new(text).centered().block(trace_block);
-    } else {
-        let mut lines = vec![];
-        for failed_trace in &app.local_campaign_data.failed_traces {
-            match &failed_trace.reason {
-                FailReason::Trapped => {
-                    lines.push(Line::from(
-                        "Last message in trace has Trapped or assertion has failed ❌",
-                    ));
-                }
-                FailReason::Property(_failed_property) => {
-                    lines.push(Line::from("Property check failed ❌"));
-                }
-            }
+//     if app.local_campaign_data.failed_traces.is_empty() {
+//         let text = Text::from(vec![Line::from("No failed traces found")]);
+//         return Paragraph::new(text).centered().block(trace_block);
+//     } else {
+//         let mut lines = vec![];
+//         for failed_trace in &app.local_campaign_data.failed_traces {
+//             match &failed_trace.reason {
+//                 FailReason::Trapped => {
+//                     lines.push(Line::from(
+//                         "Last message in trace has Trapped or assertion has failed ❌",
+//                     ));
+//                 }
+//                 FailReason::Property(_failed_property) => {
+//                     lines.push(Line::from("Property check failed ❌"));
+//                 }
+//             }
 
-            // Messages
-            for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
-            {
-                let mut message_data = vec![];
-                message_data.push(Span::styled(
-                    format!("Message {}: ", idx),
-                    Style::default().fg(Color::Yellow),
-                ));
-                // lines.push(Line::from(format!("Message {}: ", idx)));
-                let decode_result = match deploy_or_message {
-                    DeployOrMessage::Deploy(deploy) => {
-                        app.contract.decode_deploy(&deploy.data)
-                    }
-                    DeployOrMessage::Message(message) => {
-                        app.contract.decode_message(&message.input)
-                    }
-                };
-                match decode_result {
-                    Err(_e) => {
-                        // lines.push(Line::from(format!("Raw message: {:?}",
-                        // &deploy_or_message.data())));
-                        message_data.push(Span::styled(
-                            format!("Raw message: {:?}", &deploy_or_message.data()),
-                            Style::default(),
-                        ));
-                    }
-                    Result::Ok(x) => {
-                        // lines.push(Line::from(value_to_string(&x)));
-                        message_data
-                            .push(Span::styled(value_to_string(&x), Style::default()));
-                    }
-                }
-                lines.push(Line::from(message_data));
-            }
+//             // Messages
+//             for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
+//             {
+//                 let mut message_data = vec![];
+//                 message_data.push(Span::styled(
+//                     format!("Message {}: ", idx),
+//                     Style::default().fg(Color::Yellow),
+//                 ));
+//                 // lines.push(Line::from(format!("Message {}: ", idx)));
+//                 let decode_result = match deploy_or_message {
+//                     DeployOrMessage::Deploy(deploy) => {
+//                         app.contract.decode_deploy(&deploy.data)
+//                     }
+//                     DeployOrMessage::Message(message) => {
+//                         app.contract.decode_message(&message.input)
+//                     }
+//                 };
+//                 match decode_result {
+//                     Err(_e) => {
+//                         // lines.push(Line::from(format!("Raw message: {:?}",
+//                         // &deploy_or_message.data())));
+//                         message_data.push(Span::styled(
+//                             format!("Raw message: {:?}", &deploy_or_message.data()),
+//                             Style::default(),
+//                         ));
+//                     }
+//                     Result::Ok(x) => {
+//                         // lines.push(Line::from(value_to_string(&x)));
+//                         message_data
+//                             .push(Span::styled(value_to_string(&x), Style::default()));
+//                     }
+//                 }
+//                 lines.push(Line::from(message_data));
+//             }
 
-            match &failed_trace.reason {
-                FailReason::Trapped => {
-                    lines.push(Line::from("Last message in trace has Trapped"))
-                }
-                FailReason::Property(failed_property) => {
-                    // Failed properties
-                    match app.contract.decode_message(&failed_property.input) {
-                        Err(_e) => {
-                            lines.push(Line::from(format!(
-                                "Raw message: {:?}",
-                                &failed_property.input
-                            )));
-                        }
-                        Result::Ok(x) => {
-                            lines.push(Line::from(vec![
-                                "Property: ".into(),
-                                value_to_string(&x).into(),
-                            ]));
-                        }
-                    }
-                }
-            };
+//             match &failed_trace.reason {
+//                 FailReason::Trapped => {
+//                     lines.push(Line::from("Last message in trace has Trapped"))
+//                 }
+//                 FailReason::Property(failed_property) => {
+//                     // Failed properties
+//                     match app.contract.decode_message(&failed_property.input) {
+//                         Err(_e) => {
+//                             lines.push(Line::from(format!(
+//                                 "Raw message: {:?}",
+//                                 &failed_property.input
+//                             )));
+//                         }
+//                         Result::Ok(x) => {
+//                             lines.push(Line::from(vec![
+//                                 "Property: ".into(),
+//                                 value_to_string(&x).into(),
+//                             ]));
+//                         }
+//                     }
+//                 }
+//             };
 
-            lines.push(Line::from(""));
-        }
-        Paragraph::new(lines).left_aligned().block(trace_block)
-    }
-}
+//             lines.push(Line::from(""));
+//         }
+//         Paragraph::new(lines).left_aligned().block(trace_block)
+//     }
+// }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let header_style = Style::default()
@@ -256,10 +254,10 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         .height(1);
     let rows = app
         .local_campaign_data
-        .properties
+        .properties_or_messages
         .iter()
         .enumerate()
-        .map(|(i, data)| {
+        .map(|(i, (method_id, method_info))| {
             let color = match i % 2 {
                 0 => app.colors.normal_row_color,
                 _ => app.colors.alt_row_color,
@@ -271,17 +269,22 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             //     .style(Style::new().fg(app.colors.row_fg).bg(color))
             //     .height(4)
             // Row::from
+            let table_type = if method_info.property {
+                "Property"
+            } else {
+                "Message"
+            };
 
             vec![
-                data,
-                &String::from("Property"),
-                &String::from("Checking..."),
+                method_info.method_name.clone(),
+                table_type.into(),
+                String::from("Checking... ⚙️"),
             ]
             .into_iter()
-            .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+            .map(|content| Cell::from(Text::from(format!("{content}"))))
             .collect::<Row>()
             .style(Style::new().fg(app.colors.row_fg).bg(color))
-            .height(4)
+            .height(ITEM_HEIGHT as u16)
         });
     let bar = " █ ";
     let t = Table::new(
@@ -349,7 +352,12 @@ fn render_scrollbar(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_footer(f: &mut Frame, app: &App, area: Rect) {
-    let info_footer = Paragraph::new(Line::from(INFO_TEXT))
+    let text = if app.show_popup {
+        INFO_TEXT_CLOSE_MODAL
+    } else {
+        INFO_TEXT_OPEN_MODAL
+    };
+    let info_footer = Paragraph::new(Line::from(text))
         .style(Style::new().fg(app.colors.row_fg).bg(app.colors.buffer_bg))
         .centered()
         .block(
