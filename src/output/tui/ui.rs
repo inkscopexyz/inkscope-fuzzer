@@ -54,95 +54,58 @@ pub fn ui(f: &mut Frame, mut app: &mut App) {
 fn render_initializing(f: &mut Frame, _app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5)])
+        .constraints([Constraint::Length(10)])
         .split(f.size());
 
-    let main_widget = get_main_widget("Initializing");
-    f.render_widget(main_widget, chunks[0]);
+   render_main_widget(f, _app, chunks[0], "Initializing");
 }
 
 fn render_running(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
-            Constraint::Length(6),
-            Constraint::Min(5),
+            Constraint::Length(10),
+            Constraint::Min(8),
             Constraint::Length(3),
         ])
         .split(f.size());
 
-    let main_widget = get_main_widget("In Progress");
-    f.render_widget(main_widget, chunks[0]);
+    render_main_widget(f, app, chunks[0], "In Progress");
 
-    let config_widget = get_config_widget(app);
-    f.render_widget(config_widget, chunks[1]);
+    render_table(f, app, chunks[1]);
 
-    //let trace_widget = get_trace_widget(app);
-    //f.render_widget(trace_widget, chunks[2]);
+    render_scrollbar(f, app, chunks[1]);
 
-    render_table(f, app, chunks[2]);
-
-    render_scrollbar(f, app, chunks[2]);
-
-    render_footer(f, app, chunks[3]);
+    render_footer(f, app, chunks[2]);
 }
 
 fn render_finished(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
-            Constraint::Length(6),
+            Constraint::Length(10),
             Constraint::Min(5),
         ])
         .split(f.size());
 
-    let main_widget = get_main_widget("Finished");
-    f.render_widget(main_widget, chunks[0]);
-
-    let config_widget = get_config_widget(app);
-    f.render_widget(config_widget, chunks[1]);
+    render_main_widget(f, app,chunks[0], "Finished");
 
     let trace_widget = get_trace_widget(app);
-    f.render_widget(trace_widget, chunks[2]);
+    f.render_widget(trace_widget, chunks[1]);
 }
 
-fn get_main_widget(status: &str) -> Paragraph {
+fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     let title = Title::from(" Inkscope Fuzzer ".bold());
-    let instructions =
-        Title::from(Line::from(vec![" Quit ".into(), "<Q> ".blue().bold()]));
-    let title_block = Block::default()
+    let main_block = Block::bordered()
         .title(title.alignment(Alignment::Center))
-        .title(
-            instructions
-                .alignment(Alignment::Center)
-                .position(Position::Bottom),
-        )
-        .borders(Borders::ALL)
-        .border_set(border::THICK)
-        .style(Style::default());
-
-    // let status = Line::from(vec!["Status: Initializing...".into()]);
-    let status = vec![
-        Line::from(""),
-        Line::from(vec!["Status: ".into(), status.into()]),
-        Line::from(""),
-    ];
-
-    Paragraph::new(status).centered().block(title_block)
-}
-
-fn get_config_widget(app: &App) -> Paragraph {
-    let title = Title::from(" Config ");
-
-    let title_block = Block::default()
-        .title(title.alignment(Alignment::Left))
-        .borders(Borders::ALL)
-        .border_set(border::PLAIN)
-        .style(Style::default());
+        .border_type(BorderType::Double)
+        .border_style(Style::new().fg(app.colors.footer_border_color));
 
     let mut lines = vec![];
+
+    let status_line = Line::from(vec!["Status: ".into(), status.into()]);
+    lines.push(status_line);
+
     let seed_line = Line::from(vec![
         "Seed: ".into(),
         app.local_campaign_data.seed.to_string().yellow(),
@@ -166,8 +129,8 @@ fn get_config_widget(app: &App) -> Paragraph {
     lines.push(properties_line);
 
     let text = Text::from(lines);
-
-    Paragraph::new(text).left_aligned().block(title_block)
+    let paragraph = Paragraph::new(text).style(Style::new().fg(app.colors.row_fg).bg(app.colors.buffer_bg)).left_aligned().block(main_block);
+    f.render_widget(paragraph, area);
 }
 
 fn get_trace_widget(app: &App) -> Paragraph {
