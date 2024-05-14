@@ -1,6 +1,7 @@
 use contract_transcode::Value;
 
 use crate::{
+    config::Config,
     contract_bundle::ContractBundle,
     engine::{
         CampaignStatus,
@@ -36,12 +37,7 @@ use super::tui::{
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;
-    fn start_campaign(
-        &mut self,
-        seed: u64,
-        properties: Vec<([u8; 4], MethodInfo)>,
-        max_iterations: u64,
-    );
+    fn start_campaign(&mut self, config: Config, properties: Vec<([u8; 4], MethodInfo)>);
     fn end_campaign(&mut self) -> io::Result<()>;
     fn exit(&self) -> bool;
     fn update_status(&mut self, campaign_status: CampaignStatus);
@@ -62,16 +58,11 @@ impl OutputTrait for ConsoleOutput {
             current_iteration: 0,
         }
     }
-    fn start_campaign(
-        &mut self,
-        seed: u64,
-        properties: Vec<([u8; 4], MethodInfo)>,
-        max_iterations: u64,
-    ) {
+    fn start_campaign(&mut self, config: Config, properties: Vec<([u8; 4], MethodInfo)>) {
         println!("Starting campaign...");
-        println!("Seed: {}", seed);
+        println!("Seed: {}", config.seed);
         println!("Properties found: {:?}", properties.len());
-        println!("Max iterations: {}", max_iterations);
+        println!("Max iterations: {}", config.max_rounds);
     }
     fn end_campaign(&mut self) -> io::Result<()> {
         if self.failed_traces.is_empty() {
@@ -165,7 +156,6 @@ pub struct TuiOutput {
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
     pub tui_thread: Option<JoinHandle<()>>,
-    pub current_iteration: AtomicU64,
 }
 impl OutputTrait for TuiOutput {
     fn new(contract: ContractBundle) -> Self {
@@ -174,18 +164,16 @@ impl OutputTrait for TuiOutput {
             campaign_data,
             contract,
             tui_thread: None,
-            current_iteration: 0.into(),
         }
     }
     fn start_campaign(
         &mut self,
-        seed: u64,
+        config: Config,
         properties_or_messages: Vec<([u8; 4], MethodInfo)>,
-        max_iterations: u64,
     ) {
         {
             let mut shared_campaign_data = self.campaign_data.write().unwrap();
-            shared_campaign_data.seed = seed;
+            shared_campaign_data.config = config;
             shared_campaign_data.properties_or_messages = properties_or_messages;
             shared_campaign_data.status = CampaignStatus::InProgress;
         }
@@ -221,14 +209,7 @@ impl OutputTrait for TuiOutput {
         self.campaign_data.write().unwrap().failed_traces = failed_traces;
     }
     fn incr_iteration(&mut self) {
-        // if self
-        //     .current_iteration
-        //     .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        //     % 100
-        //     == 0
-        // {
-        //     println!(".");
-        // }
+        self.campaign_data.write().unwrap().current_iteration += 1;
     }
 }
 

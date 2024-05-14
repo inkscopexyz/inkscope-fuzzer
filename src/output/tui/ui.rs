@@ -1,3 +1,5 @@
+use std::os::macos::raw::stat;
+
 use contract_transcode::Value;
 use ratatui::{
     layout::{
@@ -62,10 +64,7 @@ pub fn ui(f: &mut Frame, mut app: &mut App) {
         CampaignStatus::Initializing => {
             render_initializing(f, app);
         }
-        CampaignStatus::InProgress => {
-            render_running(f, app);
-        }
-        CampaignStatus::Finished => {
+        _ => {
             render_running(f, app);
         }
     }
@@ -84,16 +83,17 @@ fn render_running(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(10),
+            Constraint::Length(6),
             Constraint::Min(8),
             Constraint::Length(3),
         ])
         .split(f.size());
 
     let status = match app.local_campaign_data.status {
-        CampaignStatus::InProgress => "In Progress",
-        CampaignStatus::Finished => "Finished",
         CampaignStatus::Initializing => "Initializing",
+        CampaignStatus::InProgress => "In Progress",
+        CampaignStatus::Optimizing => "Optimizing",
+        CampaignStatus::Finished => "Finished",
     };
     render_main_widget(f, app, chunks[0], status);
 
@@ -122,19 +122,19 @@ fn render_finished(f: &mut Frame, app: &App) {
 
 fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     let title = Title::from(" Inkscope Fuzzer ".bold());
+    let status = Title::from(vec![" ".into(), status.into(), " ".into()]);
+
     let main_block = Block::bordered()
         .title(title.alignment(Alignment::Center))
+        .title(status.alignment(Alignment::Center).position(Position::Top))
         .border_type(BorderType::Double)
         .border_style(Style::new().fg(app.colors.footer_border_color));
 
     let mut lines = vec![];
 
-    let status_line = Line::from(vec!["Status: ".into(), status.into()]);
-    lines.push(status_line);
-
     let seed_line = Line::from(vec![
         "Seed: ".into(),
-        app.local_campaign_data.seed.to_string().yellow(),
+        app.local_campaign_data.config.seed.to_string().yellow(),
     ]);
     lines.push(seed_line);
 
@@ -147,6 +147,32 @@ fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
             .yellow(),
     ]);
     lines.push(n_properties_line);
+
+    let iterations = Line::from(vec![
+        Span::styled("Iterations: ", Style::default()),
+        Span::styled(
+            app.local_campaign_data.current_iteration.to_string(),
+            Style::default(),
+        )
+        .yellow(),
+        Span::styled("/", Style::default()).yellow(),
+        Span::styled(
+            app.local_campaign_data.config.max_rounds.to_string(),
+            Style::default(),
+        )
+        .yellow(),
+    ]);
+    lines.push(iterations);
+
+    let fail_fast = Line::from(vec![
+        "Fail fast: ".into(),
+        app.local_campaign_data
+            .config
+            .fail_fast
+            .to_string()
+            .yellow(),
+    ]);
+    lines.push(fail_fast);
 
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text)
@@ -269,11 +295,20 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             let fuzzing_status =
                 match app.local_campaign_data.failed_traces.get(method_id) {
-                    Some(_) => "❌ Bug found",
+                    Some(_) => {
+                        match app.local_campaign_data.status {
+                            CampaignStatus::InProgress => "❌ Failed",
+                            CampaignStatus::Optimizing => "🔍 Optimizing...",
+                            CampaignStatus::Finished => "❌ Failed - Optimized",
+                            _ => "",
+                        }
+                    }
                     None => {
                         match app.local_campaign_data.status {
                             CampaignStatus::InProgress => "🔍 Fuzzing...",
-                            CampaignStatus::Finished => "✅ No bugs found",
+                            CampaignStatus::Finished | CampaignStatus::Optimizing => {
+                                "✅ Passed"
+                            }
                             _ => "",
                         }
                     }

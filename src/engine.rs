@@ -76,6 +76,7 @@ use std::{
 pub enum CampaignStatus {
     Initializing,
     InProgress,
+    Optimizing,
     Finished,
 }
 
@@ -83,16 +84,18 @@ pub enum CampaignStatus {
 pub struct CampaignData {
     pub properties_or_messages: Vec<([u8; 4], MethodInfo)>,
     pub failed_traces: HashMap<[u8; 4], FailedTrace>,
-    pub seed: u64,
     pub status: CampaignStatus,
+    pub config: Config,
+    pub current_iteration: u64,
 }
 impl Default for CampaignData {
     fn default() -> Self {
         Self {
             properties_or_messages: vec![],
             failed_traces: HashMap::new(),
-            seed: 0,
             status: CampaignStatus::Initializing,
+            config: Config::default(),
+            current_iteration: 0,
         }
     }
 }
@@ -763,7 +766,7 @@ where
     pub fn run_campaign(&mut self) -> Result<CampaignResult> {
         // Set the init config in the output
         self.output.start_campaign(
-            self.config.seed,
+            self.config.clone(),
             self.method_info
                 .iter()
                 .filter(|(selector, method_info)| {
@@ -772,7 +775,6 @@ where
                 })
                 .map(|(selector, method_info)| (selector.clone(), method_info.clone()))
                 .collect(),
-            self.config.max_rounds,
         );
 
         let max_iterations = self.config.max_rounds;
@@ -820,6 +822,8 @@ where
             }
             self.snapshot_cache.extend(local_snapshot_cache);
         }
+
+        self.output.update_status(CampaignStatus::Optimizing);
 
         let mut new_failed_traces = HashMap::new();
         for ft in failed_traces {
