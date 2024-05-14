@@ -1,5 +1,3 @@
-use std::os::macos::raw::stat;
-
 use contract_transcode::Value;
 use ratatui::{
     layout::{
@@ -30,8 +28,6 @@ use ratatui::{
         Cell,
         Clear,
         HighlightSpacing,
-        List,
-        ListItem,
         Paragraph,
         Row,
         Scrollbar,
@@ -59,7 +55,7 @@ const INFO_TEXT_OPEN_MODAL: &str =
 const INFO_TEXT_CLOSE_MODAL: &str =
     "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Close Failed Trace";
 
-pub fn ui(f: &mut Frame, mut app: &mut App) {
+pub fn ui(f: &mut Frame, app: &mut App) {
     match app.local_campaign_data.status {
         CampaignStatus::Initializing => {
             render_initializing(f, app);
@@ -106,18 +102,6 @@ fn render_running(f: &mut Frame, app: &mut App) {
     if app.show_popup {
         render_popup(f, app, chunks[1]);
     }
-}
-
-fn render_finished(f: &mut Frame, app: &App) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(5)])
-        .split(f.size());
-
-    render_main_widget(f, app, chunks[0], "Finished");
-
-    // let trace_widget = get_trace_widget(app);
-    // f.render_widget(trace_widget, chunks[1]);
 }
 
 fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
@@ -256,7 +240,8 @@ fn get_trace_widget(app: &App, method_id: [u8; 4]) -> Paragraph {
                     }
                 }
             };
-            app.popup_scroll_state.content_length(lines.len());
+            // TODO: Make Scrollbar work and update max size based on the content
+            // app.popup_scroll_state.content_length(lines.len());
             Paragraph::new(lines).left_aligned().block(trace_block)
         }
     }
@@ -320,7 +305,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 fuzzing_status.into(),
             ]
             .into_iter()
-            .map(|content| Cell::from(Text::from(format!("{content}"))))
+            .map(|content| Cell::from(Text::from(content.to_string())))
             .collect::<Row>()
             .style(Style::new().fg(app.colors.row_fg).bg(color))
             .height(ITEM_HEIGHT as u16)
@@ -471,7 +456,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 fn value_to_string(value: &Value) -> String {
     match value {
         Value::Map(map) => {
-            let mut result = String::from(format!("{}(", map.ident().unwrap()));
+            let mut result = format!("{}(", map.ident().unwrap());
             for (n, (_, value)) in map.iter().enumerate() {
                 if n != 0 {
                     result.push_str(", ");

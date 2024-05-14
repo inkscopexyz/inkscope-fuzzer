@@ -3,19 +3,10 @@ pub mod testing {
 
     use crate::{
         config::Config,
-        engine::{
-            CampaignData,
-            Engine,
-        },
+        engine::Engine,
         output::output::ConsoleOutput,
     };
-    use std::{
-        path::PathBuf,
-        sync::{
-            Arc,
-            RwLock,
-        },
-    };
+    use std::path::PathBuf;
 
     fn test_contract(
         contract_path: PathBuf,
@@ -24,7 +15,6 @@ pub mod testing {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
         let campaign_result = engine.run_campaign()?;
-        // engine.print_campaign_result(&campaign_result);
 
         // Check that the campaign result is as expected
         if should_find_broken_properties {

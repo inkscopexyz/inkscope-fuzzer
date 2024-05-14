@@ -3,11 +3,7 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
-    output::output::{
-        ConsoleOutput,
-        OutputTrait,
-        TuiOutput,
-    },
+    output::output::OutputTrait,
     types::{
         AccountId,
         Balance,
@@ -23,16 +19,12 @@ use anyhow::{
     Ok,
     Result,
 };
-use contract_transcode::Value;
 use ink_sandbox::{
     api::{
         balance_api::BalanceAPI,
         contracts_api::ContractAPI,
     },
-    frame_support::{
-        print,
-        sp_runtime::traits::Hash,
-    },
+    frame_support::sp_runtime::traits::Hash,
     macros::DefaultSandboxRuntime,
     pallet_contracts::{
         AddressGenerator,
@@ -66,10 +58,6 @@ use std::{
         Hasher,
     },
     path::PathBuf,
-    sync::{
-        Arc,
-        RwLock,
-    },
 };
 
 #[derive(Debug, Clone)]
@@ -770,10 +758,10 @@ where
             self.method_info
                 .iter()
                 .filter(|(selector, method_info)| {
-                    self.properties.contains(selector.clone())
+                    self.properties.contains(*selector)
                         || (method_info.mutates && !method_info.constructor)
                 })
-                .map(|(selector, method_info)| (selector.clone(), method_info.clone()))
+                .map(|(selector, method_info)| (*selector, method_info.clone()))
                 .collect(),
         );
 
@@ -812,12 +800,6 @@ where
                 }
             }
 
-            // Update failed traces with new failed traces
-
-            // TODO: Only update the campaign data if new failed traces are found.
-            // TODO: Maybe send a message to worker thread to make checks and perform
-            // updates
-            
             self.output.incr_iteration();
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
@@ -829,25 +811,25 @@ where
 
         self.output.update_status(CampaignStatus::Optimizing);
 
-        let mut optimized_failed_traces:HashMap<[u8;4],FailedTrace> = HashMap::new();
-        for (ft_method_id,ft) in failed_traces.clone() {
+        let mut optimized_failed_traces: HashMap<[u8; 4], FailedTrace> = HashMap::new();
+        for (ft_method_id, ft) in failed_traces.clone() {
             let ft = self.optimize(&mut fuzzer, ft)?;
-            //let key = ft.method_id();
+            // let key = ft.method_id();
             match optimized_failed_traces.get(&ft_method_id) {
                 None => {
-                    optimized_failed_traces.insert(ft_method_id.clone(), ft.clone());
+                    optimized_failed_traces.insert(ft_method_id, ft.clone());
                     self.output.update_failed_traces(ft_method_id, ft.clone());
                 }
                 Some(val) => {
                     if val.trace.messages.len() > ft.trace.messages.len() {
                         // smallest trace!
-                        optimized_failed_traces.insert(ft_method_id.clone(), ft.clone());
+                        optimized_failed_traces.insert(ft_method_id, ft.clone());
                         self.output.update_failed_traces(ft_method_id, ft.clone());
                     }
                 }
             }
         }
-        
+
         self.output.end_campaign()?;
 
         println!("Elapsed time: {:?}", start_time.elapsed());

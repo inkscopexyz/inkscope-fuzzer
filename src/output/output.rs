@@ -4,7 +4,6 @@ use crate::{
     config::Config,
     contract_bundle::ContractBundle,
     engine::{
-        cmp4,
         CampaignStatus,
         DeployOrMessage,
         FailReason,
@@ -19,7 +18,6 @@ use std::{
         Write,
     },
     sync::{
-        atomic::AtomicU64,
         Arc,
         RwLock,
     },
@@ -42,7 +40,7 @@ pub trait OutputTrait {
     fn end_campaign(&mut self) -> io::Result<()>;
     fn exit(&self) -> bool;
     fn update_status(&mut self, campaign_status: CampaignStatus);
-    fn update_failed_traces(&mut self, key:[u8; 4], new_failed_trace: FailedTrace);
+    fn update_failed_traces(&mut self, key: [u8; 4], new_failed_trace: FailedTrace);
     fn incr_iteration(&mut self);
 }
 
@@ -164,24 +162,24 @@ impl OutputTrait for ConsoleOutput {
     }
 
     fn update_failed_traces(&mut self, key: [u8; 4], new_failed_trace: FailedTrace) {
-            let old_failed_trace = self.failed_traces.get(&key);
-            match old_failed_trace {
-                Some(old_failed_trace) if new_failed_trace >= *old_failed_trace => {
-                    return;
-                }
-                None if matches!(self.status,CampaignStatus::InProgress)=> {
-                    match &new_failed_trace.reason {
-                        FailReason::Trapped => {
-                            print!("❗️");
-                        }
-                        FailReason::Property(_) => {
-                            print!("❌");
-                        }
+        let old_failed_trace = self.failed_traces.get(&key);
+        match old_failed_trace {
+            Some(old_failed_trace) if new_failed_trace >= *old_failed_trace => {
+                return;
+            }
+            None if matches!(self.status, CampaignStatus::InProgress) => {
+                match &new_failed_trace.reason {
+                    FailReason::Trapped => {
+                        print!("❗️");
+                    }
+                    FailReason::Property(_) => {
+                        print!("❌");
                     }
                 }
-                _ => {}
             }
-            self.failed_traces.insert(key, new_failed_trace);
+            _ => {}
+        }
+        self.failed_traces.insert(key, new_failed_trace);
     }
     fn incr_iteration(&mut self) {
         self.current_iteration += 1;
@@ -246,7 +244,11 @@ impl OutputTrait for TuiOutput {
         self.campaign_data.write().unwrap().status = campaign_status;
     }
     fn update_failed_traces(&mut self, key: [u8; 4], failed_trace: FailedTrace) {
-        self.campaign_data.write().unwrap().failed_traces.insert(key, failed_trace);
+        self.campaign_data
+            .write()
+            .unwrap()
+            .failed_traces
+            .insert(key, failed_trace);
     }
     fn incr_iteration(&mut self) {
         self.campaign_data.write().unwrap().current_iteration += 1;

@@ -12,28 +12,15 @@ use std::{
     time::Duration,
 };
 
-use ratatui::{
-    prelude::*,
-    widgets::{
-        block::Title,
-        Block,
-    },
-};
+use ratatui::prelude::*;
 
 use crossterm::event::{
     self,
-    Event,
     KeyCode,
     KeyEvent,
     KeyEventKind,
 };
-use ratatui::{
-    symbols::border,
-    widgets::{
-        block::*,
-        *,
-    },
-};
+use ratatui::widgets::*;
 
 use crate::{
     contract_bundle::ContractBundle,

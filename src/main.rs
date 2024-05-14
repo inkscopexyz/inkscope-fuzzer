@@ -10,11 +10,6 @@ mod output;
 mod tests;
 mod types;
 
-use std::sync::{
-    Arc,
-    RwLock,
-};
-
 use crate::config::Config;
 use anyhow::{
     Ok,
@@ -25,11 +20,7 @@ use clap::{
     Parser,
 };
 use cli::Cli;
-use engine::{
-    CampaignData,
-    CampaignStatus,
-    Engine,
-};
+use engine::Engine;
 use output::output::{
     ConsoleOutput,
     TuiOutput,
@@ -51,16 +42,12 @@ fn main() -> Result<()> {
     };
     let contract_path = cli.contract;
 
-    // let campaign_data = Arc::new(RwLock::new(CampaignData::default()));
-
     // Run the fuzzer
     if config.use_tui {
         let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
-        // engine.run_campaign(&mut Arc::clone(&campaign_data))?;
         engine.run_campaign()?;
     } else {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
-        // engine.run_campaign(&mut Arc::clone(&campaign_data))?;
         engine.run_campaign()?;
     }
 
