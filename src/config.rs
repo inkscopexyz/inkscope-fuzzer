@@ -85,7 +85,7 @@ impl Default for Config {
 
         Self {
             seed: 0,
-            fail_fast: true,
+            fail_fast: false,
             max_rounds: 1000,
             budget: 1000000000000,
             accounts: vec![AccountId::new([1; 32]), AccountId::new([2; 32])],

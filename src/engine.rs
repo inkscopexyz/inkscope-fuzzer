@@ -147,7 +147,7 @@ impl FailedTrace {
     }
 }
 
-fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
+pub fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
     // Verifica si los primeros 4 elementos son iguales
     vec1.iter().zip(vec2.iter()).take(4).all(|(x, y)| x == y)
 }
@@ -790,30 +790,34 @@ where
         for _ in 0..max_iterations {
             let mut local_fuzzer = fuzzer.fork();
             let mut local_snapshot_cache = SnapshotCache::new();
-            let new_failed_traces =
+            let found_failed_traces =
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
 
-            for new_ft in new_failed_traces {
-                let key = new_ft
+            for found_ft in found_failed_traces {
+                let key = found_ft
                     .method_id()
                     .try_into()
                     .map_err(|_| anyhow!("Failed to convert method_id to [u8;4]"))?;
                 match failed_traces.get(&key) {
                     None => {
-                        failed_traces.insert(key, new_ft.clone());
+                        failed_traces.insert(key, found_ft.clone());
+                        self.output.update_failed_traces(key, found_ft);
                     }
                     Some(old_ft) => {
-                        if new_ft < *old_ft {
-                            failed_traces.insert(key, new_ft.clone());
+                        if found_ft < *old_ft {
+                            failed_traces.insert(key, found_ft.clone());
+                            self.output.update_failed_traces(key, found_ft);
                         }
                     }
                 }
             }
 
+            // Update failed traces with new failed traces
+
             // TODO: Only update the campaign data if new failed traces are found.
             // TODO: Maybe send a message to worker thread to make checks and perform
             // updates
-            self.output.update_failed_traces(failed_traces.clone());
+            
             self.output.incr_iteration();
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
@@ -825,33 +829,31 @@ where
 
         self.output.update_status(CampaignStatus::Optimizing);
 
-        let mut new_failed_traces = HashMap::new();
-        for ft in failed_traces {
-            let ft = self.optimize(&mut fuzzer, ft.1)?;
-            // let mut key: Vec<u8> = ft.failed_data().iter().take(4).cloned().collect();
-            // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
-            //     key.push(*c);
-            // };
-            // let t: Vec<u8> =
-            let key = ft.method_id();
-            match new_failed_traces.get(&key) {
+        let mut optimized_failed_traces:HashMap<[u8;4],FailedTrace> = HashMap::new();
+        for (ft_method_id,ft) in failed_traces.clone() {
+            let ft = self.optimize(&mut fuzzer, ft)?;
+            //let key = ft.method_id();
+            match optimized_failed_traces.get(&ft_method_id) {
                 None => {
-                    new_failed_traces.insert(key, ft.clone());
+                    optimized_failed_traces.insert(ft_method_id.clone(), ft.clone());
+                    self.output.update_failed_traces(ft_method_id, ft.clone());
                 }
                 Some(val) => {
                     if val.trace.messages.len() > ft.trace.messages.len() {
                         // smallest trace!
-                        new_failed_traces.insert(key, ft.clone());
+                        optimized_failed_traces.insert(ft_method_id.clone(), ft.clone());
+                        self.output.update_failed_traces(ft_method_id, ft.clone());
                     }
                 }
             }
         }
-
+        
         self.output.end_campaign()?;
+
         println!("Elapsed time: {:?}", start_time.elapsed());
 
         Ok(CampaignResult {
-            failed_traces: new_failed_traces.values().cloned().collect(),
+            failed_traces: optimized_failed_traces.values().cloned().collect(),
         })
     }
 
