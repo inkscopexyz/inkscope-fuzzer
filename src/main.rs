@@ -21,7 +21,7 @@ use clap::{
 };
 use cli::Cli;
 use engine::Engine;
-use output::output::{
+use output::{
     ConsoleOutput,
     TuiOutput,
 };

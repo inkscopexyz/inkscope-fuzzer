@@ -4,7 +4,7 @@ pub mod testing {
     use crate::{
         config::Config,
         engine::Engine,
-        output::output::ConsoleOutput,
+        output::ConsoleOutput,
     };
     use std::path::PathBuf;
 

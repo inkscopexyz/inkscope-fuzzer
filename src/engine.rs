@@ -3,7 +3,7 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
-    output::output::OutputTrait,
+    output::OutputTrait,
     types::{
         AccountId,
         Balance,
