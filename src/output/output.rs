@@ -2,18 +2,37 @@ use contract_transcode::Value;
 
 use crate::{
     contract_bundle::ContractBundle,
-    engine::{CampaignStatus, DeployOrMessage, FailReason, FailedTrace, MethodInfo},
+    engine::{
+        CampaignStatus,
+        DeployOrMessage,
+        FailReason,
+        FailedTrace,
+        MethodInfo,
+    },
 };
 use std::{
     collections::HashMap,
-    io::{self, Write},
-    sync::{atomic::AtomicU64, Arc, RwLock},
-    thread::{self, JoinHandle},
+    io::{
+        self,
+        Write,
+    },
+    sync::{
+        atomic::AtomicU64,
+        Arc,
+        RwLock,
+    },
+    thread::{
+        self,
+        JoinHandle,
+    },
 };
 
 use crate::engine::CampaignData;
 
-use super::tui::{self, app::App};
+use super::tui::{
+    self,
+    app::App,
+};
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;
@@ -91,7 +110,8 @@ impl OutputTrait for ConsoleOutput {
             }
 
             // Messages
-            for (idx, deploy_or_message) in new_failed_trace.trace.messages.iter().enumerate()
+            for (idx, deploy_or_message) in
+                new_failed_trace.trace.messages.iter().enumerate()
             {
                 print!("  Message{}: ", idx);
                 let decode_result = match deploy_or_message {

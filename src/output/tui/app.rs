@@ -96,6 +96,7 @@ pub struct App {
     pub table_scroll_state: ScrollbarState,
     pub show_popup: bool,
     pub popup_scroll_state: ScrollbarState,
+    pub popup_scroll_position: usize,
     pub colors: AppColors,
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
@@ -115,6 +116,7 @@ impl App {
             ),
             show_popup: false,
             popup_scroll_state: ScrollbarState::new(0),
+            popup_scroll_position: 0,
             colors: AppColors::new(&tailwind::BLUE),
             campaign_data,
             contract,
@@ -178,7 +180,9 @@ impl App {
 
     pub fn next(&mut self) {
         if self.show_popup {
-            self.popup_scroll_state.next();
+            self.popup_scroll_position = self.popup_scroll_position.saturating_add(1);
+            self.popup_scroll_state =
+                self.popup_scroll_state.position(self.popup_scroll_position);
         } else {
             let i = match self.table_state.selected() {
                 Some(i) => {
@@ -197,7 +201,9 @@ impl App {
 
     pub fn previous(&mut self) {
         if self.show_popup {
-            self.popup_scroll_state.prev();
+            self.popup_scroll_position = self.popup_scroll_position.saturating_sub(1);
+            self.popup_scroll_state =
+                self.popup_scroll_state.position(self.popup_scroll_position);
         } else {
             let i = match self.table_state.selected() {
                 Some(i) => {

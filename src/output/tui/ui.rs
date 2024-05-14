@@ -1,21 +1,55 @@
 use contract_transcode::Value;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{
+        Constraint,
+        Direction,
+        Layout,
+        Rect,
+    },
     prelude::*,
-    style::{Color, Style},
+    style::{
+        Color,
+        Style,
+    },
     symbols::border,
-    text::{Line, Span, Text},
+    text::{
+        Line,
+        Span,
+        Text,
+    },
     widgets::{
-        block::{Position, Title},
-        Block, BorderType, Borders, Cell, Clear, HighlightSpacing, List, ListItem,
-        Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Wrap,
+        block::{
+            Position,
+            Title,
+        },
+        Block,
+        BorderType,
+        Borders,
+        Cell,
+        Clear,
+        HighlightSpacing,
+        List,
+        ListItem,
+        Paragraph,
+        Row,
+        Scrollbar,
+        ScrollbarOrientation,
+        Table,
+        Wrap,
     },
     Frame,
 };
 
-use crate::engine::{CampaignStatus, DeployOrMessage, FailReason};
+use crate::engine::{
+    CampaignStatus,
+    DeployOrMessage,
+    FailReason,
+};
 
-use super::app::{App, ITEM_HEIGHT};
+use super::app::{
+    App,
+    ITEM_HEIGHT,
+};
 
 const INFO_TEXT_OPEN_MODAL: &str =
     "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Open Failed Trace";
@@ -60,7 +94,6 @@ fn render_running(f: &mut Frame, app: &mut App) {
         CampaignStatus::InProgress => "In Progress",
         CampaignStatus::Finished => "Finished",
         CampaignStatus::Initializing => "Initializing",
-        
     };
     render_main_widget(f, app, chunks[0], status);
 
@@ -197,6 +230,7 @@ fn get_trace_widget(app: &App, method_id: [u8; 4]) -> Paragraph {
                     }
                 }
             };
+            app.popup_scroll_state.content_length(lines.len());
             Paragraph::new(lines).left_aligned().block(trace_block)
         }
     }
@@ -233,10 +267,22 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 "Message"
             };
 
+            let fuzzing_status =
+                match app.local_campaign_data.failed_traces.get(method_id) {
+                    Some(_) => "❌ Bug found",
+                    None => {
+                        match app.local_campaign_data.status {
+                            CampaignStatus::InProgress => "🔍 Fuzzing...",
+                            CampaignStatus::Finished => "✅ No bugs found",
+                            _ => "",
+                        }
+                    }
+                };
+
             vec![
                 method_info.method_name.clone(),
                 table_type.into(),
-                String::from("🛠️ Checking..."),
+                fuzzing_status.into(),
             ]
             .into_iter()
             .map(|content| Cell::from(Text::from(format!("{content}"))))
@@ -326,21 +372,47 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(info_footer, area);
 }
 
-fn render_popup(f: &mut Frame, app: &App, area: Rect) {
+fn render_popup(f: &mut Frame, app: &mut App, area: Rect) {
+    let key_index = app.table_state.selected().unwrap();
+    let (method_id, method_info) = app
+        .local_campaign_data
+        .properties_or_messages
+        .get(key_index)
+        .unwrap();
     let popup_layout = centered_rect(100, 100, area);
     let popup_block = Block::default()
-        .title("Popup")
+        .title(Title::from(vec![
+            Span::styled(" Failed Trace: ", Style::default().fg(app.colors.header_fg)),
+            Span::styled(
+                format!("{} ", method_info.method_name),
+                Style::default().fg(app.colors.row_fg),
+            ),
+        ]))
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
         .border_style(Style::default().fg(app.colors.footer_border_color));
+    let paragraph = get_trace_widget(app, method_id.to_owned())
+        .style(
+            Style::default()
+                .fg(app.colors.row_fg)
+                .bg(app.colors.buffer_bg),
+        )
+        .wrap(Wrap { trim: true })
+        .block(popup_block)
+        .scroll((app.popup_scroll_position as u16, 0));
 
-    let key_index = app.table_state.selected().unwrap();
-    let method_id = app.local_campaign_data.properties_or_messages.get(key_index).unwrap().0;
-    let paragraph = get_trace_widget(app, method_id).style(Style::default().fg(app.colors.row_fg).bg(app.colors.buffer_bg))
-    .wrap(Wrap { trim: true }).block(popup_block);       
-   
     f.render_widget(Clear, popup_layout);
     f.render_widget(paragraph, popup_layout);
+    f.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        popup_layout.inner(&Margin {
+            vertical: 1,
+            horizontal: 1,
+        }),
+        &mut app.popup_scroll_state,
+    );
 }
 
 /// helper function to create a centered rect using up certain percentage of the available

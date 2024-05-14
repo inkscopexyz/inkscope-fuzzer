@@ -81,8 +81,8 @@ pub enum CampaignStatus {
 
 #[derive(Debug, Clone)]
 pub struct CampaignData {
-    pub properties_or_messages: Vec<([u8;4],MethodInfo)>,
-    pub failed_traces: HashMap<[u8;4],FailedTrace>,
+    pub properties_or_messages: Vec<([u8; 4], MethodInfo)>,
+    pub failed_traces: HashMap<[u8; 4], FailedTrace>,
     pub seed: u64,
     pub status: CampaignStatus,
 }
@@ -177,7 +177,7 @@ impl MethodInfo {
             mutates,
             payable,
             constructor,
-            property
+            property,
         }
     }
 }
@@ -435,7 +435,7 @@ where
                 true,
                 spec.payable,
                 true,
-                false // Constructors cannot be properties
+                false, // Constructors cannot be properties
             );
             self.method_info.insert(selector, method_info);
             self.constructors.insert(selector);
@@ -766,8 +766,11 @@ where
             self.config.seed,
             self.method_info
                 .iter()
-                .filter(|(selector, method_info)| self.properties.contains(selector.clone()) || (method_info.mutates && !method_info.constructor))
-                .map(|(selector, method_info)| (selector.clone(),method_info.clone()))
+                .filter(|(selector, method_info)| {
+                    self.properties.contains(selector.clone())
+                        || (method_info.mutates && !method_info.constructor)
+                })
+                .map(|(selector, method_info)| (selector.clone(), method_info.clone()))
                 .collect(),
             self.config.max_rounds,
         );
@@ -778,8 +781,8 @@ where
 
         let start_time = std::time::Instant::now();
 
-        //let mut failed_traces: Vec<FailedTrace> = vec![];
-        let mut failed_traces: HashMap<[u8;4],FailedTrace> = HashMap::new();
+        // let mut failed_traces: Vec<FailedTrace> = vec![];
+        let mut failed_traces: HashMap<[u8; 4], FailedTrace> = HashMap::new();
         let mut fuzzer = Fuzzer::new(rng_seed, self.config.constants.clone());
 
         for _ in 0..max_iterations {
@@ -789,7 +792,10 @@ where
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
 
             for new_ft in new_failed_traces {
-                let key = new_ft.method_id().try_into().map_err(|_| anyhow!("Failed to convert method_id to [u8;4]"))?;
+                let key = new_ft
+                    .method_id()
+                    .try_into()
+                    .map_err(|_| anyhow!("Failed to convert method_id to [u8;4]"))?;
                 match failed_traces.get(&key) {
                     None => {
                         failed_traces.insert(key, new_ft.clone());
