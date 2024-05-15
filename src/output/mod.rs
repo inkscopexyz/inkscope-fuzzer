@@ -10,24 +10,10 @@ use crate::{
         MethodInfo,
     },
 };
+use std::io;
+
 pub use console::ConsoleOutput;
-use std::{
-    io::{
-        self,
-    },
-    sync::{
-        Arc,
-        RwLock,
-    },
-    thread::{
-        self,
-        JoinHandle,
-    },
-};
-
-use crate::engine::CampaignData;
-
-use tui::app::App;
+pub use tui::TuiOutput;
 
 pub trait OutputTrait {
     fn new(contract: ContractBundle) -> Self;

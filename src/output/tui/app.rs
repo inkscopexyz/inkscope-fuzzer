@@ -211,7 +211,7 @@ impl App {
     pub fn toggle_popup(&mut self) {
         if !self.show_popup {
             let key_index = self.table_state.selected().unwrap();
-            let (method_id, method_info) = self
+            let (method_id, _method_info) = self
                 .local_campaign_data
                 .properties_or_messages
                 .get(key_index)
