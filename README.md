@@ -2,9 +2,9 @@
 
 ## Overview
 
-Inkscope fuzzer is a property-based fuzzing tool designed to find bugs and vulnerabilities in Ink! smart contracts during the development phase. It utilizes the Drink runtime emulation engine to execute and test Polkadot smart contracts against user-defined properties. 
+Inkscope fuzzer is a property-based fuzzing tool designed to find bugs and vulnerabilities in Ink! smart contracts during the development phase. It utilizes the offitial ink-sandbox runtime emulation engine to execute and test Polkadot smart contracts against user-defined properties.
 
-These properties are writen in ink! and the fuzzer starts from a .contract file produced from a ink compilation. The fuzzer generates random inputs and checks if the provided properties hold true for the smart contract under test.
+These properties are writen in ink! itself and the fuzzer starts from a .contract file produced from a ink compilation. The fuzzer generates random inputs and checks if the provided properties hold true for the smart contract under test.
 
 If the fuzzer discovers a property violation, it prints the complete execution trace, including the contract deployment process, all the messages called, and the violated properties. This detailed output assists developers in identifying and fixing issues within their smart contracts.
 
