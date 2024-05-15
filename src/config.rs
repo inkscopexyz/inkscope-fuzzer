@@ -69,20 +69,6 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        // TODO! Do it right
-        // let default_callers: Vec<AccountId> = vec![
-        //     "Alice".into(),
-        //     "Bob".into(),
-        //     "Charlie".into(),
-        //     "Dave".into(),
-        //     "Eve".into(),
-        //     "Ferdinand".into(),
-        //     "Gina".into(),
-        //     "Hank".into(),
-        //     "Ivan".into(),
-        //     "Jenny".into(),
-        // ];
-
         Self {
             seed: 0,
             fail_fast: false,
@@ -97,7 +83,7 @@ impl Default for Config {
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,
             constants: Constants::default(),
-            use_tui: true,
+            use_tui: false,
         }
     }
 }

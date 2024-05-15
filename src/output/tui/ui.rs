@@ -18,10 +18,7 @@ use ratatui::{
         Text,
     },
     widgets::{
-        block::{
-            Position,
-            Title,
-        },
+        block::Title,
         Block,
         BorderType,
         Borders,
@@ -50,7 +47,7 @@ use super::app::{
 };
 
 const INFO_TEXT_OPEN_MODAL: &str =
-    "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Open Failed Trace";
+    "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Open  Failed Trace";
 
 const INFO_TEXT_CLOSE_MODAL: &str =
     "(Q) Quit | (↑) Move up | (↓) Move down | (ENTER) Close Failed Trace";
@@ -105,25 +102,23 @@ fn render_running(f: &mut Frame, app: &mut App) {
 }
 
 fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
-    let title = Title::from(" Inkscope Fuzzer ".bold());
-    let status = Title::from(vec![" ".into(), status.into(), " ".into()]);
+    let title = Title::from(format!(" Inkscope Fuzzer = {} ", status));
 
     let main_block = Block::bordered()
         .title(title.alignment(Alignment::Center))
-        .title(status.alignment(Alignment::Center).position(Position::Top))
         .border_type(BorderType::Double)
         .border_style(Style::new().fg(app.colors.footer_border_color));
 
     let mut lines = vec![];
 
     let seed_line = Line::from(vec![
-        "Seed: ".into(),
+        " Seed: ".into(),
         app.local_campaign_data.config.seed.to_string().yellow(),
     ]);
     lines.push(seed_line);
 
     let n_properties_line = Line::from(vec![
-        "Properties found: ".into(),
+        " Properties found: ".into(),
         app.local_campaign_data
             .properties_or_messages
             .len()
@@ -133,7 +128,7 @@ fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     lines.push(n_properties_line);
 
     let iterations = Line::from(vec![
-        Span::styled("Iterations: ", Style::default()),
+        Span::styled(" Iterations: ", Style::default()),
         Span::styled(
             app.local_campaign_data.current_iteration.to_string(),
             Style::default(),
@@ -149,7 +144,7 @@ fn render_main_widget(f: &mut Frame, app: &App, area: Rect, status: &str) {
     lines.push(iterations);
 
     let fail_fast = Line::from(vec![
-        "Fail fast: ".into(),
+        " Fail fast: ".into(),
         app.local_campaign_data
             .config
             .fail_fast
@@ -394,6 +389,7 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_popup(f: &mut Frame, app: &mut App, area: Rect) {
     let key_index = app.table_state.selected().unwrap();
+
     let (method_id, method_info) = app
         .local_campaign_data
         .properties_or_messages

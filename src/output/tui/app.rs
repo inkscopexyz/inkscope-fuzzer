@@ -142,6 +142,7 @@ impl App {
             KeyCode::Down => self.next(),
             KeyCode::Up => self.previous(),
             KeyCode::Enter => self.toggle_popup(),
+            KeyCode::Esc if self.show_popup => self.toggle_popup(),
             _ => {}
         }
     }
@@ -208,6 +209,20 @@ impl App {
     }
 
     pub fn toggle_popup(&mut self) {
-        self.show_popup = !self.show_popup;
+        if !self.show_popup {
+            let key_index = self.table_state.selected().unwrap();
+            let (method_id, _method_info) = self
+                .local_campaign_data
+                .properties_or_messages
+                .get(key_index)
+                .unwrap();
+
+            let failed_trace = self.local_campaign_data.failed_traces.get(method_id);
+            if failed_trace.is_some() {
+                self.show_popup = true;
+            }
+        } else {
+            self.show_popup = false;
+        }
     }
 }

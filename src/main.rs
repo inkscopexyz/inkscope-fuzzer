@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     let contract_path = cli.contract;
 
     // Run the fuzzer
-    if config.use_tui {
+    if config.use_tui || cli.tui {
         let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
         engine.run_campaign()?;
     } else {
