@@ -184,3 +184,4 @@ You can start a TUI by passing --tui in the command line (or changing the `use_t
 ```bash
     inkscope-fuzzer  ./test-contracts/ityfuzz/target/ink/ityfuzz.contract --tui
 ```
+![image](https://github.com/inkscopexyz/inkscope-fuzzer/assets/1017522/96a51639-3150-4dcb-a308-a5fe5d320870)
