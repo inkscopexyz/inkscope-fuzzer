@@ -3,6 +3,7 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
+    output::OutputTrait,
     types::{
         AccountId,
         Balance,
@@ -18,7 +19,6 @@ use anyhow::{
     Ok,
     Result,
 };
-use contract_transcode::Value;
 use ink_sandbox::{
     api::{
         balance_api::BalanceAPI,
@@ -59,6 +59,34 @@ use std::{
     },
     path::PathBuf,
 };
+
+#[derive(Debug, Clone)]
+pub enum CampaignStatus {
+    Initializing,
+    InProgress,
+    Optimizing,
+    Finished,
+}
+
+#[derive(Debug, Clone)]
+pub struct CampaignData {
+    pub properties_or_messages: Vec<([u8; 4], MethodInfo)>,
+    pub failed_traces: HashMap<[u8; 4], FailedTrace>,
+    pub status: CampaignStatus,
+    pub config: Config,
+    pub current_iteration: u64,
+}
+impl Default for CampaignData {
+    fn default() -> Self {
+        Self {
+            properties_or_messages: vec![],
+            failed_traces: HashMap::new(),
+            status: CampaignStatus::Initializing,
+            config: Config::default(),
+            current_iteration: 0,
+        }
+    }
+}
 
 pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
@@ -107,46 +135,53 @@ impl FailedTrace {
     }
 }
 
-fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
+pub fn cmp4<T: PartialEq>(vec1: &[T], vec2: &[T]) -> bool {
     // Verifica si los primeros 4 elementos son iguales
     vec1.iter().zip(vec2.iter()).take(4).all(|(x, y)| x == y)
 }
 
 // Our own copy of method information. The selector is used as the key in the hashmap
-struct MethodInfo {
-    arguments: Vec<TypeDef<PortableForm>>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodInfo {
+    pub method_name: String,
+    pub arguments: Vec<TypeDef<PortableForm>>,
     #[allow(dead_code)]
-    mutates: bool,
-    payable: bool,
+    pub mutates: bool,
+    pub payable: bool,
     #[allow(dead_code)]
-    constructor: bool,
+    pub constructor: bool,
+    pub property: bool,
 }
 
 impl MethodInfo {
     fn new(
+        method_name: String,
         arguments: Vec<TypeDef<PortableForm>>,
         mutates: bool,
         payable: bool,
         constructor: bool,
+        property: bool,
     ) -> Self {
         Self {
+            method_name,
             arguments,
             mutates,
             payable,
             constructor,
+            property,
         }
     }
 }
 
 #[derive(StdHash, Debug, Clone, PartialEq)]
 pub struct Deploy {
-    caller: AccountId,
-    endowment: Balance,
-    contract_bytes: Vec<u8>,
-    data: Vec<u8>,
-    salt: Vec<u8>,
-    code_hash: CodeHash,
-    address: AccountId,
+    pub caller: AccountId,
+    pub endowment: Balance,
+    pub contract_bytes: Vec<u8>,
+    pub data: Vec<u8>,
+    pub salt: Vec<u8>,
+    pub code_hash: CodeHash,
+    pub address: AccountId,
 }
 impl Deploy {
     pub fn new(
@@ -190,7 +225,7 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-enum DeployOrMessage {
+pub enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
 }
@@ -205,7 +240,7 @@ impl DeployOrMessage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
-    messages: Vec<DeployOrMessage>,
+    pub messages: Vec<DeployOrMessage>,
 }
 
 impl Trace {
@@ -301,7 +336,7 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
     }
 }
 
-pub struct Engine {
+pub struct Engine<T: OutputTrait> {
     // Contract Info
     contract: ContractBundle,
 
@@ -316,6 +351,9 @@ pub struct Engine {
 
     // Settings
     config: Config,
+
+    // Output module
+    output: T,
 }
 
 type SnapshotCache = HashMap<TraceHash, TraceState>;
@@ -342,7 +380,10 @@ impl TraceState {
     }
 }
 
-impl Engine {
+impl<T> Engine<T>
+where
+    T: OutputTrait,
+{
     // This should generate a random account id from the set of potential callers
     fn generate_caller(&self, fuzzer: &mut Fuzzer) -> AccountId {
         fuzzer
@@ -379,7 +420,14 @@ impl Engine {
                     .type_def;
                 arguments.push(arg.clone());
             }
-            let method_info = MethodInfo::new(arguments, true, spec.payable, true);
+            let method_info = MethodInfo::new(
+                spec.label().to_string(),
+                arguments,
+                true,
+                spec.payable,
+                true,
+                false, // Constructors cannot be properties
+            );
             self.method_info.insert(selector, method_info);
             self.constructors.insert(selector);
         }
@@ -397,8 +445,14 @@ impl Engine {
                     .type_def;
                 arguments.push(arg.clone());
             }
-            let method_info =
-                MethodInfo::new(arguments, spec.mutates(), spec.payable(), false);
+            let method_info = MethodInfo::new(
+                spec.label().to_string(),
+                arguments,
+                spec.mutates(),
+                spec.payable(),
+                false,
+                self.is_property(spec.label()),
+            );
             self.method_info.insert(selector, method_info);
             if self.is_property(spec.label()) {
                 self.properties.insert(selector);
@@ -414,6 +468,9 @@ impl Engine {
     pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
         info!("Loading contract from {:?}", contract_path);
         let contract = ContractBundle::load(contract_path)?;
+
+        let output = T::new(contract.clone());
+        // let output2 = ConsoleOutput::new(contract.clone());
 
         // TODO: fix callers
         let _default_callers: Vec<AccountId> = vec![AccountId::new([41u8; 32])];
@@ -432,6 +489,9 @@ impl Engine {
 
             // Settings
             config,
+
+            // Output module
+            output,
         };
         engine.extract_method_info()?;
         Ok(engine)
@@ -692,20 +752,55 @@ impl Engine {
     }
 
     pub fn run_campaign(&mut self) -> Result<CampaignResult> {
+        // Set the init config in the output
+        self.output.start_campaign(
+            self.config.clone(),
+            self.method_info
+                .iter()
+                .filter(|(selector, method_info)| {
+                    self.properties.contains(*selector)
+                        || (method_info.mutates && !method_info.constructor)
+                })
+                .map(|(selector, method_info)| (*selector, method_info.clone()))
+                .collect(),
+        );
+
         let max_iterations = self.config.max_rounds;
         let fail_fast = self.config.fail_fast;
         let rng_seed = self.config.seed;
 
-        let mut failed_traces: Vec<FailedTrace> = vec![];
+        let start_time = std::time::Instant::now();
+
+        // let mut failed_traces: Vec<FailedTrace> = vec![];
+        let mut failed_traces: HashMap<[u8; 4], FailedTrace> = HashMap::new();
         let mut fuzzer = Fuzzer::new(rng_seed, self.config.constants.clone());
 
         for _ in 0..max_iterations {
             let mut local_fuzzer = fuzzer.fork();
             let mut local_snapshot_cache = SnapshotCache::new();
-            let new_failed_traces =
+            let found_failed_traces =
                 self.run(&mut local_fuzzer, &mut local_snapshot_cache)?;
 
-            failed_traces.extend(new_failed_traces);
+            for found_ft in found_failed_traces {
+                let key = found_ft
+                    .method_id()
+                    .try_into()
+                    .map_err(|_| anyhow!("Failed to convert method_id to [u8;4]"))?;
+                match failed_traces.get(&key) {
+                    None => {
+                        failed_traces.insert(key, found_ft.clone());
+                        self.output.update_failed_traces(key, found_ft);
+                    }
+                    Some(old_ft) => {
+                        if found_ft < *old_ft {
+                            failed_traces.insert(key, found_ft.clone());
+                            self.output.update_failed_traces(key, found_ft);
+                        }
+                    }
+                }
+            }
+
+            self.output.incr_iteration();
 
             // If we have failed traces and fail_fast is enabled, we stop the campaign
             if !failed_traces.is_empty() && fail_fast {
@@ -714,32 +809,33 @@ impl Engine {
             self.snapshot_cache.extend(local_snapshot_cache);
         }
 
-        // Ok(CampaignResult { failed_traces })
+        self.output.update_status(CampaignStatus::Optimizing);
 
-        let mut new_failed_traces = HashMap::new();
-        for ft in failed_traces {
+        let mut optimized_failed_traces: HashMap<[u8; 4], FailedTrace> = HashMap::new();
+        for (ft_method_id, ft) in failed_traces.clone() {
             let ft = self.optimize(&mut fuzzer, ft)?;
-            // let mut key: Vec<u8> = ft.failed_data().iter().take(4).cloned().collect();
-            // for c in ft.failed_data().iter().take(4).collect::<Vec<_>>() {
-            //     key.push(*c);
-            // };
-            // let t: Vec<u8> =
-            let key = ft.method_id();
-            match new_failed_traces.get(&key) {
+            // let key = ft.method_id();
+            match optimized_failed_traces.get(&ft_method_id) {
                 None => {
-                    new_failed_traces.insert(key, ft.clone());
+                    optimized_failed_traces.insert(ft_method_id, ft.clone());
+                    self.output.update_failed_traces(ft_method_id, ft.clone());
                 }
                 Some(val) => {
                     if val.trace.messages.len() > ft.trace.messages.len() {
                         // smallest trace!
-                        new_failed_traces.insert(key, ft.clone());
+                        optimized_failed_traces.insert(ft_method_id, ft.clone());
+                        self.output.update_failed_traces(ft_method_id, ft.clone());
                     }
                 }
             }
         }
 
+        self.output.end_campaign()?;
+
+        println!("Elapsed time: {:?}", start_time.elapsed());
+
         Ok(CampaignResult {
-            failed_traces: new_failed_traces.values().cloned().collect(),
+            failed_traces: optimized_failed_traces.values().cloned().collect(),
         })
     }
 
@@ -938,102 +1034,6 @@ impl Engine {
         }
         Ok(failed_traces)
     }
-
-    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
-        let output = Output::new(&self.contract);
-        output.print_campaign_result(campaign_result);
-    }
-}
-
-pub struct Output<'a> {
-    contract: &'a ContractBundle,
-}
-
-impl<'a> Output<'a> {
-    pub fn new(contract: &'a ContractBundle) -> Self {
-        Self { contract }
-    }
-    pub fn decode_message(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_message(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding message: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    pub fn decode_deploy(&self, data: &Vec<u8>) -> Result<Value> {
-        let decoded = self
-            .contract
-            .transcoder
-            .decode_contract_constructor(&mut data.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error decoding constructor: {:?}", e))?;
-        Ok(decoded)
-    }
-
-    fn print_value(value: &Value) {
-        match value {
-            Value::Map(map) => {
-                print!("{}(", map.ident().unwrap());
-                for (n, (_name, value)) in map.iter().enumerate() {
-                    if n != 0 {
-                        print!(", ");
-                    }
-                    Self::print_value(value);
-                }
-                print!(")");
-            }
-            _ => {
-                print!("{:?}", value);
-            }
-        }
-    }
-
-    pub fn print_campaign_result(&self, campaign_result: &CampaignResult) {
-        for failed_trace in &campaign_result.failed_traces {
-            println!("Property check failed ❌");
-
-            // Messages
-            for (idx, deploy_or_message) in failed_trace.trace.messages.iter().enumerate()
-            {
-                print!("  Message{}: ", idx);
-                let decode_result = match deploy_or_message {
-                    DeployOrMessage::Deploy(deploy) => self.decode_deploy(&deploy.data),
-                    DeployOrMessage::Message(message) => {
-                        self.decode_message(&message.input)
-                    }
-                };
-                match decode_result {
-                    Err(_e) => {
-                        println!("Raw message: {:?}", &deploy_or_message.data());
-                    }
-                    Result::Ok(x) => {
-                        print!("  Message: ",);
-                        Self::print_value(&x);
-                        println!();
-                    }
-                }
-            }
-
-            match &failed_trace.reason {
-                FailReason::Trapped => println!("Last message in trace has Trapped"),
-                FailReason::Property(failed_property) => {
-                    // Failed properties
-
-                    match self.decode_message(&failed_property.input) {
-                        Err(_e) => {
-                            println!("Raw message: {:?}", &failed_property.input);
-                        }
-                        Result::Ok(x) => {
-                            print!("  Property: ",);
-                            Self::print_value(&x);
-                            println!();
-                        }
-                    }
-                }
-            };
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1080,7 +1080,8 @@ mod tests {
     #[test]
     fn test_method_info() {
         let arguments = vec![];
-        let method_info = MethodInfo::new(arguments, true, true, false);
+        let method_info =
+            MethodInfo::new(String::from("Name"), arguments, true, true, false, false);
         assert!(method_info.mutates);
         assert!(method_info.payable);
         assert!(!method_info.constructor);

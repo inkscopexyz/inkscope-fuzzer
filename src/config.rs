@@ -29,7 +29,7 @@ pub struct Config {
     pub fail_fast: bool,
 
     // Max number of iterations to run the fuzzer
-    pub max_rounds: usize,
+    pub max_rounds: u64,
 
     // Max endowment that can be sent in a fuzzed message
     pub budget: Balance,
@@ -46,7 +46,7 @@ pub struct Config {
     // Max number of transactions that can be generated in a given run
     pub max_number_of_transactions: usize,
 
-    // Max attempts to try optimize (reduce) a failed trace. 
+    // Max attempts to try optimize (reduce) a failed trace.
     pub max_optimization_rounds: usize,
 
     // Max gas limit for a transaction
@@ -62,27 +62,16 @@ pub struct Config {
 
     // Initial set of constant values to use in the fuzzing
     pub constants: Constants,
+
+    // If true, the fuzzer will use the TUI
+    pub use_tui: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        // TODO! Do it right
-        // let default_callers: Vec<AccountId> = vec![
-        //     "Alice".into(),
-        //     "Bob".into(),
-        //     "Charlie".into(),
-        //     "Dave".into(),
-        //     "Eve".into(),
-        //     "Ferdinand".into(),
-        //     "Gina".into(),
-        //     "Hank".into(),
-        //     "Ivan".into(),
-        //     "Jenny".into(),
-        // ];
-
         Self {
             seed: 0,
-            fail_fast: true,
+            fail_fast: false,
             max_rounds: 1000,
             budget: 1000000000000,
             accounts: vec![AccountId::new([1; 32]), AccountId::new([2; 32])],
@@ -94,6 +83,7 @@ impl Default for Config {
             property_prefix: "inkscope_".to_string(),
             fuzz_property_max_rounds: 100,
             constants: Constants::default(),
+            use_tui: false,
         }
     }
 }

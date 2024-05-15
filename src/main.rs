@@ -5,6 +5,7 @@ mod contract_bundle;
 mod engine;
 mod fuzzer;
 mod generator;
+mod output;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -20,6 +21,10 @@ use clap::{
 };
 use cli::Cli;
 use engine::Engine;
+use output::{
+    ConsoleOutput,
+    TuiOutput,
+};
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -37,9 +42,14 @@ fn main() -> Result<()> {
     };
     let contract_path = cli.contract;
 
-    let mut engine = Engine::new(contract_path, config)?;
-    let campaign_result = engine.run_campaign()?;
-    engine.print_campaign_result(&campaign_result);
+    // Run the fuzzer
+    if config.use_tui || cli.tui {
+        let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
+        engine.run_campaign()?;
+    } else {
+        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+        engine.run_campaign()?;
+    }
 
     Ok(())
 }

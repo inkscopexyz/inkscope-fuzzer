@@ -4,6 +4,7 @@ pub mod testing {
     use crate::{
         config::Config,
         engine::Engine,
+        output::ConsoleOutput,
     };
     use std::path::PathBuf;
 
@@ -12,9 +13,8 @@ pub mod testing {
         should_find_broken_properties: bool,
         config: Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut engine = Engine::new(contract_path, config)?;
+        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
         let campaign_result = engine.run_campaign()?;
-        engine.print_campaign_result(&campaign_result);
 
         // Check that the campaign result is as expected
         if should_find_broken_properties {

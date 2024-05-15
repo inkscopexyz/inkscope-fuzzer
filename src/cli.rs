@@ -12,4 +12,7 @@ pub struct Cli {
 
     #[arg(short, long)]
     pub config: Option<PathBuf>,
+
+    #[arg(short, long)]
+    pub tui: bool,
 }
