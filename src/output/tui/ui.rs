@@ -395,7 +395,7 @@ fn render_popup(f: &mut Frame, app: &mut App, area: Rect) {
         .properties_or_messages
         .get(key_index)
         .unwrap();
-
+    app.popup_scroll_state = app.popup_scroll_state.content_length(app.local_campaign_data.failed_traces.get(method_id).unwrap().trace.messages.len());
     let popup_layout = centered_rect(100, 100, area);
     let popup_block = Block::default()
         .title(Title::from(vec![
