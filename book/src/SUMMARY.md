@@ -1,9 +1,7 @@
 # Summary
-[Introduction](./introduction.md)
-# Getting Started
+[Inkscope Fuzzer]()
+- [Overview](./overview.md)
 - [Installation](./installation.md)
-# Usage
 - [Writing properties](./writing-properties.md)
+- [Case Study: Ityfuzz](./ityfuzz.md)
 - [Executing the fuzzer](./executing.md)
-# Case Study
-- [Ityfuzz](./ityfuzz.md)
