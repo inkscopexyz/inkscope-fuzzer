@@ -175,7 +175,7 @@ impl App {
             let i = match self.table_state.selected() {
                 Some(i) => {
                     if i >= self.local_campaign_data.properties_or_messages.len() - 1 {
-                        return;
+                        return
                     } else {
                         i + 1
                     }
