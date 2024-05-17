@@ -1,0 +1,79 @@
+use_tui: false
+fail_fast: true
+max_rounds: 1000
+budget: 1000000000000
+accounts:
+- 5C4hrfjw9DjXZTzV3MwzrrAr9P1MJhSrvWGWqi1eSuyUpnhM
+- 5C62Ck4UrFPiBtoCmeSrgF7x9yv9mn38446dhCpsi2mLHiFT
+only_mutable: true
+max_sequence_type_size: 10
+max_number_of_transactions: 50
+max_optimization_rounds: 50
+gas_limit:
+  ref_time: 4611686018427387903
+  proof_size: 4611686018427387903
+property_prefix: inkscope_
+fuzz_property_max_rounds: 100
+constants:
+  u8_constants:
+  - 0
+  - 1
+  - 2
+  - 100
+  - 255
+  u16_constants:
+  - 0
+  - 1
+  - 2
+  - 100
+  - 65535
+  u32_constants:
+  - 0
+  - 1
+  - 2
+  - 100
+  - 4294967295
+  u64_constants:
+  - 0
+  - 1
+  - 2
+  - 100
+  - 18446744073709551615
+  u128_constants:
+  - 0
+  - 1
+  - 2
+  - 340282366920938463463374607431768211455
+  i8_constants:
+  - -128
+  - -1
+  - 0
+  - 1
+  - 127
+  i16_constants:
+  - -32768
+  - -1
+  - 0
+  - 1
+  - 32767
+  i32_constants:
+  - -2147483648
+  - -1
+  - 0
+  - 1
+  - 2147483647
+  i64_constants:
+  - -9223372036854775808
+  - -1
+  - 0
+  - 1
+  - 9223372036854775807
+  i128_constants:
+  - -170141183460469231731687303715884105728
+  - -1
+  - 0
+  - 1
+  - 170141183460469231731687303715884105727
+  str_constants:
+  - UNK
+  account_id_constants:
