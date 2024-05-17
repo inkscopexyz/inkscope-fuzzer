@@ -44,7 +44,7 @@ impl OutputTrait for ConsoleOutput {
         properties_or_messages: Vec<([u8; 4], MethodInfo)>,
     ) {
         self.status = CampaignStatus::InProgress;
-        self.properties_or_messages = properties_or_messages.clone();
+        self.properties_or_messages.clone_from(&properties_or_messages);
         for (id, method_info) in &self.properties_or_messages {
             self.id_to_name.insert(*id, method_info.method_name.clone());
         }
