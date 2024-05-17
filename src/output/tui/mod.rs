@@ -12,10 +12,9 @@ use crate::{
     },
 };
 use std::{
-    io::{
-        self,
-    },
+    io,
     sync::{
+        atomic::AtomicBool,
         Arc,
         RwLock,
     },
@@ -35,6 +34,7 @@ pub struct TuiOutput {
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
     pub tui_thread: Option<JoinHandle<()>>,
+    pub exit_requested: Arc<AtomicBool>,
 }
 impl OutputTrait for TuiOutput {
     fn new(contract: ContractBundle) -> Self {
@@ -43,6 +43,7 @@ impl OutputTrait for TuiOutput {
             campaign_data,
             contract,
             tui_thread: None,
+            exit_requested: Arc::new(AtomicBool::new(false)),
         }
     }
     fn start_campaign(
@@ -57,9 +58,10 @@ impl OutputTrait for TuiOutput {
             shared_campaign_data.status = CampaignStatus::InProgress;
         }
         let campaign_data = Arc::clone(&self.campaign_data);
+        let exit_requested = Arc::clone(&self.exit_requested);
         let contract = self.contract.clone();
         let tui_thread = thread::spawn(move || {
-            let mut app = App::new(campaign_data, contract);
+            let mut app = App::new(campaign_data, contract, exit_requested);
             let mut terminal = terminal::init().unwrap();
             app.run(&mut terminal).unwrap();
         });
@@ -79,7 +81,8 @@ impl OutputTrait for TuiOutput {
         Ok(())
     }
     fn exit(&self) -> bool {
-        false
+        self.exit_requested
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
     fn update_status(&mut self, campaign_status: CampaignStatus) {
         self.campaign_data.write().unwrap().status = campaign_status;
