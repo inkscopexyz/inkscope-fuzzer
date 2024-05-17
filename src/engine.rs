@@ -807,6 +807,11 @@ where
                 break;
             }
             self.snapshot_cache.extend(local_snapshot_cache);
+
+            //
+            if self.output.exit() {
+                break;
+            }
         }
 
         self.output.update_status(CampaignStatus::Optimizing);

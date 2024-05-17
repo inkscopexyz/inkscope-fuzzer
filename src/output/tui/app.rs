@@ -5,6 +5,7 @@ use std::{
         Stdout,
     },
     sync::{
+        atomic::AtomicBool,
         Arc,
         RwLock,
     },
@@ -88,12 +89,13 @@ pub struct App {
     pub campaign_data: Arc<RwLock<CampaignData>>,
     pub contract: ContractBundle,
     pub local_campaign_data: CampaignData,
-    pub exit: bool,
+    pub exit_requested: Arc<AtomicBool>,
 }
 impl App {
     pub fn new(
         campaign_data: Arc<RwLock<CampaignData>>,
         contract: ContractBundle,
+        exit_requested: Arc<AtomicBool>,
     ) -> Self {
         let local_campaign_data = campaign_data.read().unwrap().clone();
         Self {
@@ -108,13 +110,16 @@ impl App {
             campaign_data,
             contract,
             local_campaign_data,
-            exit: false,
+            exit_requested,
         }
     }
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
         self.init_terminal()?;
-        while !self.exit {
+        while !self
+            .exit_requested
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             self.local_campaign_data = self.campaign_data.read().unwrap().clone();
             terminal.draw(|frame| ui(frame, self))?;
             self.handle_events()?;
@@ -148,7 +153,8 @@ impl App {
     }
 
     fn exit(&mut self) -> io::Result<()> {
-        self.exit = true;
+        self.exit_requested
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.restore_terminal()?;
         Ok(())
     }

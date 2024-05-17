@@ -1,4 +1,4 @@
-# Inkscope Fuzzer
+# Overview
 
 *Documentation for inkscope-fuzzer users and developers.*
 

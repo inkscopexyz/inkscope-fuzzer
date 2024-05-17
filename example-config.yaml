@@ -1,3 +1,4 @@
+use_tui: false
 fail_fast: true
 max_rounds: 1000
 budget: 1000000000000
