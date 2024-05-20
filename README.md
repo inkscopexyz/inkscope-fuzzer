@@ -96,6 +96,8 @@ In order to test the fuzzer, you need to follow the steps below:
     docker run inkscope-fuzzer-testing
 ```
 
+> **Note:** To compile and run the test contracts manually in your local environment, ensure that you're using cargo-contract version 4.1.1.
+
 ### 🎨 Text User Interface
 
 You can start a TUI by passing --tui in the command line (or changing the `use_tui` variable in the config.yaml) 
