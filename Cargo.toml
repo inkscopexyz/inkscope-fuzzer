@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 ink_sandbox = { git = "https://github.com/inkscopexyz/ink.git"}
-contract-metadata = { version = "4.0.0-rc.2" }
-contract-transcode = { version = "4.0.0-rc.2" }
+contract-metadata = { version = "4.1.1" }
+contract-transcode = { version = "4.1.1" }
 fastrand = "2.0.1"
 hex = "0.4.3"
 log = "0.4.20"

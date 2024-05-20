@@ -18,7 +18,7 @@ ink-as-dependency = []
 fuzz-testing = []
 
 [dependencies]
-ink = { version = "=5.0.0-rc.1", default-features = false, features = [
+ink = { version = "=5.0.0-rc.2", default-features = false, features = [
     "ink-debug",
 ] }
 scale = { package = "parity-scale-codec", version = "3", default-features = false, features = [

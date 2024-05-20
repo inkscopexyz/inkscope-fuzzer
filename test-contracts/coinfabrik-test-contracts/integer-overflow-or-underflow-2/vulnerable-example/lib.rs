@@ -19,6 +19,7 @@ pub mod integer_overflow_underflow {
 
         // Multiply the stored value by the given amount.
         #[ink(message)]
+        #[allow(clippy::arithmetic_side_effects)]
         pub fn mul(&mut self, value: u8) {
             self.value *= value;
         }
