@@ -10,6 +10,14 @@ mod output;
 mod tests;
 mod types;
 
+use std::{
+    fs::File,
+    io::{
+        BufWriter,
+        Write,
+    },
+};
+
 use crate::config::Config;
 use anyhow::{
     Ok,
@@ -43,12 +51,21 @@ fn main() -> Result<()> {
     let contract_path = cli.contract;
 
     // Run the fuzzer
-    if config.use_tui || cli.tui {
+    let campaign_result = if config.use_tui || cli.tui {
         let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
-        engine.run_campaign()?;
+        engine.run_campaign()?
     } else {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
-        engine.run_campaign()?;
+        engine.run_campaign()?
+    };
+    if let Some(output) = cli.output {
+        let file = File::create(output)?;
+        let mut writer = BufWriter::new(file);
+
+        for ft in campaign_result.failed_traces {
+            serde_json::to_writer(&mut writer, &ft)?;
+        }
+        writer.flush()?;
     }
 
     Ok(())

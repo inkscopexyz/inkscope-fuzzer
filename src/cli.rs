@@ -15,4 +15,8 @@ pub struct Cli {
 
     #[arg(short, long)]
     pub tui: bool,
+
+    /// dump failed traces
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }

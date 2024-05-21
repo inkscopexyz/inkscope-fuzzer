@@ -47,6 +47,7 @@ use scale_info::{
     form::PortableForm,
     TypeDef,
 };
+use serde::Serialize;
 use std::{
     collections::{
         HashMap,
@@ -92,7 +93,7 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
@@ -173,7 +174,7 @@ impl MethodInfo {
     }
 }
 
-#[derive(StdHash, Debug, Clone, PartialEq)]
+#[derive(StdHash, Debug, Clone, PartialEq, Serialize)]
 pub struct Deploy {
     pub caller: AccountId,
     pub endowment: Balance,
@@ -216,7 +217,7 @@ impl Deploy {
     }
 }
 
-#[derive(StdHash, Debug, Clone, PartialEq)]
+#[derive(StdHash, Debug, Clone, PartialEq, Serialize)]
 pub struct Message {
     caller: AccountId,
     callee: AccountId,
@@ -224,7 +225,7 @@ pub struct Message {
     pub input: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Serialize)]
 pub enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
@@ -238,7 +239,7 @@ impl DeployOrMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Trace {
     pub messages: Vec<DeployOrMessage>,
 }
@@ -297,7 +298,7 @@ pub enum TraceResult {
     Reverted,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum FailReason {
     /// Last message (or deploy) in the trace trapped
     Trapped,

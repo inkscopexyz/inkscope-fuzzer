@@ -35,6 +35,46 @@ By incorporating property-based testing through Inkscope fuzzer, developers can 
 ```
 
 > For other installation methods, refer to the [installation](book/src/installation.md) section of our docs.
+5. Optional. Generate a json output file
+In order to dump any failed trace as a json file used --output FILENAME like so.
+```bash
+    inkscope-fuzzer --output falied_traces.json /path/to/file.contract
+```
+The resultant json file for failed traces should be relativelly straigh forward to process. It is a secuence of messages making a trace followed by the reason why the trace is considered a fail (property that failed or message that trapped).
+```
+[
+  {
+    "trace": {
+      "messages": [
+        {
+          "Deploy": {
+            "caller": "5C62Ck4UrFPiBtoCmeSrgF7x9yv9mn38446dhCpsi2mLHiFT",
+            "endowment": 0,
+            "contract_bytes": [...],
+          }
+        },
+        {
+          "Message": {
+            "caller": "5C62Ck4UrFPiBtoCmeSrgF7x9yv9mn38446dhCpsi2mLHiFT",
+            "callee": "5FKacgmGEFtBhEMvHshr1rZtyg7DC1zwTSmSgAC8dX1xHPfb",
+            "endowment": 0,
+            "input": [ 148, 35, 33,115 ]
+          }
+        },
+        ...
+      ]
+      "reason": {
+         "Property": {
+            "caller": "5C7LYpP2ZH3tpKbvVvwiVe54AapxErdPBbvkYhe6y9ZBkqWt",
+            "callee": "5FKacgmGEFtBhEMvHshr1rZtyg7DC1zwTSmSgAC8dX1xHPfb",
+            "endowment": 0,
+            "input": [239, 157, 158, 137 ]
+        }
+        ...
+
+``` 
+
+
 
 ### Initial Example
 
