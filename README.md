@@ -35,13 +35,16 @@ By incorporating property-based testing through Inkscope fuzzer, developers can 
 ```
 
 > For other installation methods, refer to the [installation](book/src/installation.md) section of our docs.
-5. Optional. Generate a json output file
-In order to dump any failed trace as a json file used --output FILENAME like so.
+
+5. `Optional` Generate a JSON Output File
+
+To dump the failed traces found during the fuzzing process as a JSON file, use the --output flag followed by the desired filename. For example:
 ```bash
-    inkscope-fuzzer --output falied_traces.json /path/to/file.contract
+    inkscope-fuzzer --output failed_traces.json /path/to/file.contract
 ```
-The resultant json file for failed traces should be relativelly straigh forward to process. It is a secuence of messages making a trace followed by the reason why the trace is considered a fail (property that failed or message that trapped).
-```
+The resulting JSON file for failed traces should be relatively straightforward to process. It contains a sequence of messages that make up a trace, followed by the reason why the trace is considered a failure (either a failed property or a trapped message).
+
+```json
 [
   {
     "trace": {

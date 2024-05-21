@@ -58,6 +58,7 @@ fn main() -> Result<()> {
         let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
         engine.run_campaign()?
     };
+
     if let Some(output) = cli.output {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
