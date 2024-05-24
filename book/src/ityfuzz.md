@@ -105,7 +105,7 @@ Once the property is written, we can compile the contract:
 
 And then, execute the fuzzer against it and check the output
 ```bash
-    ./target/release/inkscope-fuzzer ./test-contracts/ityfuzz/target/ink/ityfuzz.contract 
+    ./target/release/inkscope-fuzzer ./test-contracts/ityfuzz/target/ink/ityfuzz.contract fuzz
 ```
 
 If the fuzzer finds a property violation, it will print the execution trace and the violated property as shown below:

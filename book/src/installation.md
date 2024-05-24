@@ -13,13 +13,13 @@ You have to build the docker image locally. From the [inkscope-fuzzer repository
 After that, you are all set to use the fuzzer. To run it:
 
 ```bash
-    docker run -v ".:/contract" inkscope-fuzzer file.contract
+    docker run -v ".:/contract" inkscope-fuzzer file.contract fuzz
 ```
 
 Optionally, you can add an alias to make it easier to run the fuzzer.
 ```bash
     alias inkscope-fuzzer-docker="docker run -v ".:/contract" inkscope-fuzzer"
-    inkscope-fuzzer-docker file.contract
+    inkscope-fuzzer-docker file.contract fuzz
 ```
 
 ### Building from source

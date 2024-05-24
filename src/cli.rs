@@ -20,7 +20,7 @@ pub struct Cli {
 pub enum Commands {
     /// Fuzz the contract
     Fuzz {
-        /// Configuration yaml file
+        /// Custom configuration yaml file
         #[arg(short, long)]
         config: Option<PathBuf>,
 
@@ -28,7 +28,7 @@ pub enum Commands {
         #[arg(short, long)]
         tui: bool,
 
-        /// Dump failed traces to a json file
+        /// Output file for fuzzing campaign result (in 'results' dir, default: 'failed_traces')
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
