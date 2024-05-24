@@ -11,14 +11,22 @@ mod tests;
 mod types;
 
 use std::{
-    fs::File,
+    fs::{
+        create_dir_all,
+        File,
+    },
     io::{
+        BufReader,
         BufWriter,
         Write,
     },
+    path::PathBuf,
 };
 
-use crate::config::Config;
+use crate::{
+    config::Config,
+    engine::FailedTrace,
+};
 use anyhow::{
     Ok,
     Result,
@@ -27,7 +35,10 @@ use clap::{
     self,
     Parser,
 };
-use cli::{Cli, Commands};
+use cli::{
+    Cli,
+    Commands,
+};
 use engine::Engine;
 use output::{
     ConsoleOutput,
@@ -52,6 +63,7 @@ fn main() -> Result<()> {
                 Some(config) => Config::from_yaml_file(config)?,
                 None => Config::default(),
             };
+
             let contract_path = cli.contract;
 
             // Run the fuzzer
@@ -63,19 +75,51 @@ fn main() -> Result<()> {
                 engine.run_campaign()?
             };
 
-            if let Some(output) = output {
-                let file = File::create(output)?;
+            // Create the results directory if it doesn't exist
+            let results_dir = PathBuf::from("results");
+            create_dir_all(&results_dir).expect("Failed to create results directory");
+
+            // Determine the output file path
+            let output_file_path = if let Some(output) = output {
+                results_dir.join(output)
+            } else {
+                results_dir.join("failed_traces.json")
+            };
+
+            // Create and write to the output file
+            if let std::result::Result::Ok(file) = File::create(&output_file_path) {
                 let mut writer = BufWriter::new(file);
-                for ft in campaign_result.failed_traces {
-                    serde_json::to_writer(&mut writer, &ft)?;
-                }
+
+                serde_json::to_writer(&mut writer, &campaign_result.failed_traces)?;
+
                 writer.flush()?;
+            } else {
+                eprintln!("Failed to create output file: {:?}", output_file_path);
             }
         }
-        Some(Commands::Execute { input }) => {
+        Some(Commands::Execute { input, config }) => {
             // Handle execute command
             println!("Executing contract: {:?}", cli.contract);
             println!("Using input: {:?}", input);
+
+            // Read the input JSON file
+            let file = File::open(input).expect("Failed to open input file");
+            let reader = BufReader::new(file);
+
+            // Deserialize the JSON data
+            let failed_traces: Vec<FailedTrace> = serde_json::from_reader(reader)
+                .expect("Failed to deserialize failed traces data");
+
+            let config = match config {
+                Some(config) => Config::from_yaml_file(config)?,
+                None => Config::default(),
+            };
+            let contract_path = cli.contract;
+
+            // Setup the engine
+            let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+
+            println!("Failed traces: {:?}", failed_traces);
         }
         None => {
             // Handle no subcommand

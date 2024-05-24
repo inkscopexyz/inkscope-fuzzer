@@ -71,7 +71,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             seed: 0,
-            fail_fast: false,
+            fail_fast: true,
             max_rounds: 1000,
             budget: 1000000000000,
             accounts: vec![AccountId::new([1; 32]), AccountId::new([2; 32])],

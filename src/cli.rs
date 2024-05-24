@@ -1,4 +1,8 @@
-use clap::{self, Parser, Subcommand};
+use clap::{
+    self,
+    Parser,
+    Subcommand,
+};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -34,5 +38,9 @@ pub enum Commands {
         /// JSON file with failed traces
         #[arg(required = true)]
         input: PathBuf,
+
+        // Configuration yaml file
+        #[arg(short, long)]
+        config: Option<PathBuf>,
     },
 }
