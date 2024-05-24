@@ -11,12 +11,14 @@ use crate::{
     contract_bundle::ContractBundle,
     engine::{
         CampaignStatus,
-        DeployOrMessage,
         FailReason,
         FailedTrace,
         MethodInfo,
     },
-    output::OutputTrait,
+    output::{
+        utils::print_failed_trace,
+        OutputTrait,
+    },
 };
 
 pub struct ConsoleOutput {
@@ -68,50 +70,8 @@ impl OutputTrait for ConsoleOutput {
                             .get(&method_id)
                             .unwrap_or(&"Unknown".to_string())
                     );
-                    ////
                     // Messages
-                    for (idx, deploy_or_message) in
-                        failed_trace.trace.messages.iter().enumerate()
-                    {
-                        print!("  Message{}: ", idx);
-                        let decode_result = match deploy_or_message {
-                            DeployOrMessage::Deploy(deploy) => {
-                                self.contract.decode_deploy(&deploy.data)
-                            }
-                            DeployOrMessage::Message(message) => {
-                                self.contract.decode_message(&message.input)
-                            }
-                        };
-                        match decode_result {
-                            Err(_e) => {
-                                println!("Raw message: {:?}", &deploy_or_message.data());
-                            }
-                            Result::Ok(x) => {
-                                print_value(&x);
-                                println!();
-                            }
-                        }
-                    }
-
-                    match &failed_trace.reason {
-                        FailReason::Trapped => {
-                            println!("Last message in trace has Trapped")
-                        }
-                        FailReason::Property(failed_property) => {
-                            // Failed properties
-
-                            match self.contract.decode_message(&failed_property.input) {
-                                Err(_e) => {
-                                    println!("Raw message: {:?}", &failed_property.input);
-                                }
-                                Result::Ok(x) => {
-                                    print!("  Property: ",);
-                                    print_value(&x);
-                                    println!();
-                                }
-                            }
-                        }
-                    };
+                    print_failed_trace(&self.contract, failed_trace);
                 }
                 _ => {
                     println!(
@@ -162,25 +122,6 @@ impl OutputTrait for ConsoleOutput {
         if self.current_iteration % 10 == 0 {
             print!(".");
             io::stdout().flush().unwrap();
-        }
-    }
-}
-
-use contract_transcode::Value;
-fn print_value(value: &Value) {
-    match value {
-        Value::Map(map) => {
-            print!("{}(", map.ident().unwrap());
-            for (n, (_name, value)) in map.iter().enumerate() {
-                if n != 0 {
-                    print!(", ");
-                }
-                print_value(value);
-            }
-            print!(")");
-        }
-        _ => {
-            print!("{:?}", value);
         }
     }
 }

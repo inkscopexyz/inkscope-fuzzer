@@ -118,8 +118,11 @@ fn main() -> Result<()> {
 
             // Setup the engine
             let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
-
-            println!("Failed traces: {:?}", failed_traces);
+            for (index, failed_trace) in failed_traces.iter().enumerate() {
+                println!("Executing failed trace {}", index);
+                engine.execute_failed_trace(failed_trace.to_owned());
+                println!();
+            }
         }
         None => {
             // Handle no subcommand

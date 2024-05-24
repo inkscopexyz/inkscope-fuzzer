@@ -3,7 +3,11 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
-    output::OutputTrait,
+    output::{
+        utils::print_failed_trace,
+        ConsoleOutput,
+        OutputTrait,
+    },
     types::{
         AccountId,
         Balance,
@@ -1042,6 +1046,16 @@ where
             }
         }
         Ok(failed_traces)
+    }
+}
+
+impl Engine<ConsoleOutput>
+where
+    ConsoleOutput: OutputTrait,
+{
+    pub fn execute_failed_trace(&mut self, failed_trace: FailedTrace) {
+        print_failed_trace(&self.contract, &failed_trace)
+        // TODO: Execute the failed trace
     }
 }
 
