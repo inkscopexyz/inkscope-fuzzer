@@ -1,4 +1,4 @@
-use_tui: false
+seed: 0
 fail_fast: true
 max_rounds: 1000
 budget: 1000000000000
@@ -77,3 +77,4 @@ constants:
   str_constants:
   - UNK
   account_id_constants:
+use_tui: false
