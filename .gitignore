@@ -17,3 +17,6 @@ Cargo.lock
 
 # MdBook
 book/book
+
+# Results of the fuzzing campaign
+results
