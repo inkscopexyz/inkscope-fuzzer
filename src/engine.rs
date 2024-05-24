@@ -470,6 +470,10 @@ where
                 self.messages.insert(selector);
             }
         }
+        if self.messages.is_empty(){
+            bail!("No executable messages found in the contract")
+        }
+        
         Ok(())
     }
 
