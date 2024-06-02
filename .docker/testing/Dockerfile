@@ -1,6 +1,6 @@
 # Build stage
 FROM rust:1.76
-RUN rustup component add rust-src && cargo install --force --locked --version 3.2.0 cargo-contract
+RUN rustup component add rust-src && cargo install --force --locked --version 4.1.1 cargo-contract && rustup component add clippy
 WORKDIR /inkscope-fuzzer
 COPY Cargo.toml .
 COPY src/ ./src/

@@ -10,7 +10,23 @@ mod output;
 mod tests;
 mod types;
 
-use crate::config::Config;
+use std::{
+    fs::{
+        create_dir_all,
+        File,
+    },
+    io::{
+        BufReader,
+        BufWriter,
+        Write,
+    },
+    path::PathBuf,
+};
+
+use crate::{
+    config::Config,
+    engine::FailedTrace,
+};
 use anyhow::{
     Ok,
     Result,
@@ -19,7 +35,10 @@ use clap::{
     self,
     Parser,
 };
-use cli::Cli;
+use cli::{
+    Cli,
+    Commands,
+};
 use engine::Engine;
 use output::{
     ConsoleOutput,
@@ -34,21 +53,81 @@ fn main() -> Result<()> {
     // Parse the command line arguments
     let cli = Cli::parse();
 
-    // Used for developement when the Config format is changed
-    // Config::default().to_yaml_file(&cli.config)?;
-    let config = match cli.config {
-        Some(config) => Config::from_yaml_file(config)?,
-        None => Config::default(),
-    };
-    let contract_path = cli.contract;
+    match &cli.command {
+        Some(Commands::Fuzz {
+            config,
+            tui,
+            output,
+        }) => {
+            let config = match config {
+                Some(config) => Config::from_yaml_file(config)?,
+                None => Config::default(),
+            };
 
-    // Run the fuzzer
-    if config.use_tui || cli.tui {
-        let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
-        engine.run_campaign()?;
-    } else {
-        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
-        engine.run_campaign()?;
+            let contract_path = cli.contract;
+
+            // Run the fuzzer
+            let campaign_result = if config.use_tui || *tui {
+                let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
+                engine.run_campaign()?
+            } else {
+                let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+                engine.run_campaign()?
+            };
+
+            // Create the results directory if it doesn't exist
+            let results_dir = PathBuf::from("results");
+            create_dir_all(&results_dir).expect("Failed to create results directory");
+
+            // Determine the output file path
+            let output_file_path = if let Some(output) = output {
+                results_dir.join(output)
+            } else {
+                results_dir.join("failed_traces.json")
+            };
+
+            // Create and write to the output file
+            if let std::result::Result::Ok(file) = File::create(&output_file_path) {
+                let mut writer = BufWriter::new(file);
+
+                serde_json::to_writer(&mut writer, &campaign_result.failed_traces)?;
+
+                writer.flush()?;
+            } else {
+                eprintln!("Failed to create output file: {:?}", output_file_path);
+            }
+        }
+        Some(Commands::Execute { input, config }) => {
+            // Handle execute command
+            println!("Executing contract: {:?}", cli.contract);
+            println!("Using input: {:?}", input);
+
+            // Read the input JSON file
+            let file = File::open(input).expect("Failed to open input file");
+            let reader = BufReader::new(file);
+
+            // Deserialize the JSON data
+            let failed_traces: Vec<FailedTrace> = serde_json::from_reader(reader)
+                .expect("Failed to deserialize failed traces data");
+
+            let config = match config {
+                Some(config) => Config::from_yaml_file(config)?,
+                None => Config::default(),
+            };
+            let contract_path = cli.contract;
+
+            // Setup the engine
+            let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+            for (index, failed_trace) in failed_traces.iter().enumerate() {
+                println!("Executing failed trace {}", index);
+                engine.execute_failed_trace(failed_trace.to_owned());
+                println!();
+            }
+        }
+        None => {
+            // Handle no subcommand
+            println!("No subcommand provided. Use --help for more information.");
+        }
     }
 
     Ok(())

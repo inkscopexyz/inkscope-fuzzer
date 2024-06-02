@@ -3,7 +3,11 @@ use crate::{
     contract_bundle::ContractBundle,
     fuzzer::Fuzzer,
     generator::Generator,
-    output::OutputTrait,
+    output::{
+        utils::print_failed_trace,
+        ConsoleOutput,
+        OutputTrait,
+    },
     types::{
         AccountId,
         Balance,
@@ -46,6 +50,10 @@ use parity_scale_codec::Encode;
 use scale_info::{
     form::PortableForm,
     TypeDef,
+};
+use serde::{
+    Deserialize,
+    Serialize,
 };
 use std::{
     collections::{
@@ -92,7 +100,7 @@ pub struct CampaignResult {
     pub failed_traces: Vec<FailedTrace>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FailedTrace {
     /// The trace that failed
     pub trace: Trace,
@@ -173,7 +181,7 @@ impl MethodInfo {
     }
 }
 
-#[derive(StdHash, Debug, Clone, PartialEq)]
+#[derive(StdHash, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Deploy {
     pub caller: AccountId,
     pub endowment: Balance,
@@ -216,7 +224,7 @@ impl Deploy {
     }
 }
 
-#[derive(StdHash, Debug, Clone, PartialEq)]
+#[derive(StdHash, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     caller: AccountId,
     callee: AccountId,
@@ -224,7 +232,7 @@ pub struct Message {
     pub input: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
 pub enum DeployOrMessage {
     Deploy(Deploy),
     Message(Message),
@@ -238,7 +246,7 @@ impl DeployOrMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Trace {
     pub messages: Vec<DeployOrMessage>,
 }
@@ -297,7 +305,7 @@ pub enum TraceResult {
     Reverted,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FailReason {
     /// Last message (or deploy) in the trace trapped
     Trapped,
@@ -462,6 +470,10 @@ where
                 self.messages.insert(selector);
             }
         }
+        if self.messages.is_empty(){
+            bail!("No executable messages found in the contract")
+        }
+        
         Ok(())
     }
 
@@ -1038,6 +1050,16 @@ where
             }
         }
         Ok(failed_traces)
+    }
+}
+
+impl Engine<ConsoleOutput>
+where
+    ConsoleOutput: OutputTrait,
+{
+    pub fn execute_failed_trace(&mut self, failed_trace: FailedTrace) {
+        print_failed_trace(&self.contract, &failed_trace)
+        // TODO: Execute the failed trace
     }
 }
 

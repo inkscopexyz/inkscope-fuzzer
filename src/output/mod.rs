@@ -1,5 +1,6 @@
 pub mod console;
 pub mod tui;
+pub mod utils;
 
 use crate::{
     config::Config,
