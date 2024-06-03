@@ -6,6 +6,7 @@ mod engine;
 mod fuzzer;
 mod generator;
 mod output;
+mod setup;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -44,6 +45,7 @@ use output::{
     ConsoleOutput,
     TuiOutput,
 };
+use setup::Setup;
 
 fn main() -> Result<()> {
     // This initializes the logging. The code uses debug! info! trace! and error! macros
@@ -58,7 +60,13 @@ fn main() -> Result<()> {
             config,
             tui,
             output,
+            contracts,
         }) => {
+            let setup = match contracts {
+                Some(contracts) => Some(Setup::new(contracts)),
+                None => None,
+            };
+
             let config = match config {
                 Some(config) => Config::from_yaml_file(config)?,
                 None => Config::default(),
@@ -68,10 +76,11 @@ fn main() -> Result<()> {
 
             // Run the fuzzer
             let campaign_result = if config.use_tui || *tui {
-                let mut engine = Engine::<TuiOutput>::new(contract_path, config)?;
+                let mut engine = Engine::<TuiOutput>::new(contract_path, config, setup)?;
                 engine.run_campaign()?
             } else {
-                let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+                let mut engine =
+                    Engine::<ConsoleOutput>::new(contract_path, config, setup)?;
                 engine.run_campaign()?
             };
 
@@ -117,7 +126,7 @@ fn main() -> Result<()> {
             let contract_path = cli.contract;
 
             // Setup the engine
-            let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+            let mut engine = Engine::<ConsoleOutput>::new(contract_path, config, None)?; // TODO: Maybe setup should also be used here?
             for (index, failed_trace) in failed_traces.iter().enumerate() {
                 println!("Executing failed trace {}", index);
                 engine.execute_failed_trace(failed_trace.to_owned());

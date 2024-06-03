@@ -8,6 +8,7 @@ use crate::{
         ConsoleOutput,
         OutputTrait,
     },
+    setup::Setup,
     types::{
         AccountId,
         Balance,
@@ -226,9 +227,9 @@ impl Deploy {
 
 #[derive(StdHash, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
-    caller: AccountId,
-    callee: AccountId,
-    endowment: Balance,
+    pub caller: AccountId,
+    pub callee: AccountId,
+    pub endowment: Balance,
     pub input: Vec<u8>,
 }
 
@@ -325,6 +326,11 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
                     {
                         DeployOrMessageResult::Trapped
                     }
+                    DispatchError::Module(module_error)
+                        if (module_error.message == Some("TransferFailed")) =>
+                    {
+                        DeployOrMessageResult::Reverted
+                    }
                     _ => {
                         // If the error is not a ContractTrapped, we panic because
                         // is not an expected behavior
@@ -347,6 +353,7 @@ impl From<Result<ExecReturnValue, DispatchError>> for DeployOrMessageResult {
 pub struct Engine<T: OutputTrait> {
     // Contract Info
     contract: ContractBundle,
+    setup: Option<Setup>,
 
     // Rapid access to function info
     method_info: HashMap<[u8; 4], MethodInfo>,
@@ -470,14 +477,18 @@ where
                 self.messages.insert(selector);
             }
         }
-        if self.messages.is_empty(){
+        if self.messages.is_empty() {
             bail!("No executable messages found in the contract")
         }
-        
+
         Ok(())
     }
 
-    pub fn new(contract_path: PathBuf, config: Config) -> Result<Self> {
+    pub fn new(
+        contract_path: PathBuf,
+        config: Config,
+        setup: Option<Setup>,
+    ) -> Result<Self> {
         info!("Loading contract from {:?}", contract_path);
         let contract = ContractBundle::load(contract_path)?;
 
@@ -489,6 +500,7 @@ where
         let mut engine = Self {
             // Contract Info
             contract,
+            setup,
 
             // Rapid access to function info
             method_info: HashMap::new(),
@@ -585,6 +597,10 @@ where
                 .mint_into(account, self.config.budget)
                 .map_err(|e| anyhow::anyhow!("Error minting into account: {:?}", e))?;
         }
+        if let Some(setup) = &self.setup {
+            let deployer = self.config.accounts.first().unwrap();
+            setup.deploy_contracts(sandbox, deployer);
+        }
         Ok(())
     }
 
@@ -613,7 +629,7 @@ where
         sandbox: &mut DefaultSandbox,
         message: &Message,
     ) -> DeployOrMessageResult {
-        info!("Sending message with data {:?}", message);
+        debug!("Sending message with data {:?}", message);
         sandbox
             .call_contract(
                 message.callee.clone(),
@@ -712,7 +728,7 @@ where
     ) -> Result<FailedTrace> {
         // Only the deployment in the trace. Can not be optimized by this.
         if failed_trace.trace.messages.len() <= 1 {
-            return Ok(failed_trace)
+            return Ok(failed_trace);
         }
 
         let mut smallest_trace = failed_trace;
@@ -736,7 +752,7 @@ where
             {
                 // Executo all messages but the one selected for deletion
                 if pos == remove_idx {
-                    continue
+                    continue;
                 }
                 new_trace.messages.push(deploy_or_message);
                 let result = self.execute_last(

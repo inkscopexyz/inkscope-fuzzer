@@ -28,9 +28,14 @@ pub enum Commands {
         #[arg(short, long)]
         tui: bool,
 
-        /// Output file for fuzzing campaign result (in 'results' dir, default: 'failed_traces')
+        /// Output file for fuzzing campaign result (in 'results' dir, default:
+        /// 'failed_traces')
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// File with contracts info to be deployed //TODO: Improve text
+        #[arg(short, long)]
+        contracts: Option<PathBuf>,
     },
 
     /// Execute the contract with the provided failed traces

@@ -57,9 +57,10 @@ pub fn print_failed_deploy_or_message(
             let decode_result = contract.decode_message(&message.input);
             match decode_result {
                 Err(_e) => {
-                    println!("Raw message: {:?}", &message.input);
+                    println!("Raw message: {:?}", &message);
                 }
                 Result::Ok(x) => {
+                    print!("Value: {} ", message.endowment);
                     print_value(&x);
                     println!();
                 }

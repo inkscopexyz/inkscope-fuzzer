@@ -13,7 +13,7 @@ pub mod testing {
         should_find_broken_properties: bool,
         config: Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config)?;
+        let mut engine = Engine::<ConsoleOutput>::new(contract_path, config, None)?;
         let campaign_result = engine.run_campaign()?;
 
         // Check that the campaign result is as expected
