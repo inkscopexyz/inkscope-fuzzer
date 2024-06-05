@@ -34,7 +34,7 @@ pub enum Commands {
         output: Option<PathBuf>,
 
         /// File with contracts info to be deployed //TODO: Improve text
-        #[arg(short, long)]
+        #[arg(long)]
         contracts: Option<PathBuf>,
     },
 

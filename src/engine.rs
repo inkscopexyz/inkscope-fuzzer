@@ -32,16 +32,40 @@ use ink_sandbox::{
     frame_support::sp_runtime::traits::Hash,
     macros::DefaultSandboxRuntime,
     pallet_contracts::{
-        AddressGenerator,
-        DefaultAddressGenerator,
-        Determinism,
-        ExecReturnValue,
-    },
+        debug::{CallInterceptor, ExecResult, ExportedFunction}, AddressGenerator, DefaultAddressGenerator, Determinism, ExecReturnValue},
     DefaultSandbox,
     DispatchError,
     Sandbox,
     Snapshot,
 };
+
+use ink_sandbox::sp_externalities::{decl_extension, ExternalitiesExt};
+
+/// This trait describes a runtime extension that can be used to intercept contract calls.
+pub trait InterceptingExtT {
+    /// Called when a contract call is made.
+    ///
+    /// The returned value must be a valid codec encoding for `Option<ExecResult>`.
+    fn intercept_call(
+        &self,
+        _contract_address: Vec<u8>,
+        _is_call: bool,
+        _input_data: Vec<u8>,
+    ) -> Vec<u8> {
+        // By default, do not intercept, continue with the standard procedure.
+        None::<()>.encode()
+    }
+}
+
+decl_extension! {
+    /// A wrapper type for the `InterceptingExtT` debug extension.
+    pub struct InterceptingExt(Box<dyn InterceptingExtT + Send>);
+}
+
+/// The simplest extension - uses default implementation.
+impl InterceptingExtT for Cheat {}
+
+
 
 use log::{
     debug,
@@ -68,6 +92,24 @@ use std::{
     },
     path::PathBuf,
 };
+
+
+struct Cheat{
+
+}
+
+impl CallInterceptor<DefaultSandboxRuntime> for Cheat{
+    fn intercept_call(
+            contract_address: &AccountId,
+            entry_point: &ExportedFunction,
+            input_data: &[u8],
+        ) -> Option<ExecResult> {
+        println!("AAAAAA\n\n");
+        debug!("SSSSS");
+        None
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub enum CampaignStatus {
@@ -1015,6 +1057,9 @@ where
         // Local mutable state...
         // Sandbox for the emulation
         let mut sandbox = DefaultSandbox::default();
+        //sandbox.register_extension(Cheat{});
+        sandbox.register_extension(InterceptingExt(Box::new(Cheat {})));
+        
         let mut current_snapshot = self.init(&mut sandbox, local_snapshot_cache)?;
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

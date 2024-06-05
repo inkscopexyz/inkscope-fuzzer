@@ -5,18 +5,12 @@ use ink_sandbox::{
     AccountId32,
     DefaultSandbox,
 };
-use ratatui::symbols::bar::Set;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::Deserialize;
 use std::{
     fs::File,
     io::BufReader,
     path::PathBuf,
 };
-
-use crate::contract_bundle::ContractBundle;
 
 #[derive(Debug, Deserialize)]
 struct ConstructorData {
@@ -27,8 +21,8 @@ struct ConstructorData {
 
 #[derive(Debug, Deserialize)]
 pub struct ContractInfo {
-    pub contract_path: PathBuf,
-    pub constructor_data: Option<Vec<ConstructorData>>,
+    contract_path: PathBuf,
+    constructor_data: Option<Vec<ConstructorData>>,
 }
 
 #[derive(Debug, Deserialize)]

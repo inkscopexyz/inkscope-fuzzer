@@ -62,10 +62,11 @@ fn main() -> Result<()> {
             output,
             contracts,
         }) => {
-            let setup = match contracts {
-                Some(contracts) => Some(Setup::new(contracts)),
-                None => None,
-            };
+            let setup = contracts.as_ref().map(Setup::new);
+            // match contracts {
+            //     Some(contracts) => Some(Setup::new(contracts)),
+            //     None => None,
+            // };
 
             let config = match config {
                 Some(config) => Config::from_yaml_file(config)?,
